@@ -1,7 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
 
-#define FLAG 0 // (0: direct access / 1: built-in function)
+#define FLAG 1 // (0: direct access / 1: built-in function)
 #define BLUR_LEVEL 10
 
 
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
   cv::namedWindow("edge image", 1);
 
   // 6. show images
-  cv::imshow("original image", input);
+  cv::imshow("Original image", input);
   cv::imshow("gray image", gray);
   cv::imshow("blur image", blur);
   cv::imshow("edge image", edge);
@@ -108,7 +108,7 @@ void convertColorToBlur(cv::Mat &input, cv::Mat &blur){
 #if FLAG // use built-in function
 
   //4. convert color to blur
-  cv::GaussianBlur(input, blur, cv::Size(9,7), 0);
+  cv::GaussianBlur(input, blur, cv::Size(11,11), 10, 10);
  
 #else
 
