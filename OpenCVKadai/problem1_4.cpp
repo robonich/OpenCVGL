@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 
   background_img2.create(s,CV_8UC3);
 
-  cv::resize(background_img, background_img, s);
+  cv::resize(background_img, background_img, s);//cameraのサイズ似合わせる
   
   printf("Background statistics initialization start\n");
   
