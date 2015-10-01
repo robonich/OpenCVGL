@@ -1,8 +1,8 @@
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
 
-#define FLAG 1 // (0: direct access / 1: built-in function)
-#define BLUR_LEVEL 10
+#define FLAG 0 // (0: direct access / 1: built-in function)
+#define BLUR_LEVEL 5
 
 
 char* preset_file = "/home/denjo/opencv.build/opencv-2.4.11/samples/cpp/fruits.jpg";
