@@ -1,7 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
 
-#define FLAG 0 // (0: direct access / 1: built-in function)
+#define FLAG 1 // (0: direct access / 1: built-in function)
 #define BLUR_LEVEL 5
 
 
@@ -146,7 +146,14 @@ void convertColorToBlur(cv::Mat &input, cv::Mat &blur){
 
 void findEdge(cv::Mat &input, cv::Mat &edge){//inputはgrayにされたもの
 #if FLAG
-  cv::Sobel(input, edge, -1, 1, 1, 5);
+  cv::Mat grad_x, grad_y;
+  cv::Mat abs_grad_x, abs_grad_y;
+
+  cv::Sobel(input, grad_x, -1, 1, 0, 3);
+  cv::convertScaleAbs(grad_x, abs_grad_x);
+  cv::Sobel(input, grad_y, -1, 0, 1, 3);
+  cv::convertScaleAbs(grad_y, abs_grad_y);
+  cv::addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0, edge);
  
 #else
   cv::Size s=input.size();
@@ -199,12 +206,11 @@ void findEdge(cv::Mat &input, cv::Mat &edge){//inputはgrayにされたもの
 	  tmpVS2 += a * filterVS2[l+1][k+1];
 	}
       }
-      tmp = sqrt(tmpHS1*tmpHS1 + tmpVS1*tmpVS1 + tmpHS2*tmpHS2 + tmpVS2*tmpVS2);
+      //tmp = sqrt(/*tmpHS1*tmpHS1 +*/ tmpVS1*tmpVS1 /* + tmpHS2*tmpHS2*/ + tmpVS2*tmpVS2);
+      tmp = 0.5 * (abs(tmpVS1) + abs(tmpHS2));
       //printf("tmpHS = %lf, tmpVS = %lf", tmpHS, tmpVS);
       *ptr2 = (uchar)tmp;
     }
   }
 #endif
 }
-
-
