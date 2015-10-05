@@ -112,6 +112,7 @@ void glut_keyboard(unsigned char key, int x, int y){
 	}
 
 	glutPostRedisplay(); // 「ディスプレイのコールバック関数を呼んで」と指示する。
+	//これを消すと、画面が変更されなくなる
 }
 
 // ディスプレイに変化があった時に呼び出されるコールバック関数。

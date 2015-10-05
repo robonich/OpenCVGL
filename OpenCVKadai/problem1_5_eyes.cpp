@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     // image, size, scale, num, flag, smallest rect
     cascadeeye.detectMultiScale(smallImg, faces,
       1.1,
-      4,//この引数を大きくすると検出が早くなる
+      2,//この引数を大きくすると検出が早くなる
       CV_HAAR_SCALE_IMAGE/*,
       cv::Size(30,30)*/);
     
