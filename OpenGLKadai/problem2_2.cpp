@@ -158,14 +158,16 @@ void glut_display(){
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);//これをコメントアウトすると、デプス方向に描画ができなくなり、最終的に描画されたものに上書きされてしまうじょうたいになる。
-	
+	//この間に図形のマトリクスに対する操作を書き込む
 	//glPushMatrix();
 	if(g_rotate_self){
-		float rot[2] = {0.0,1.0};
+		/*float rot[2] = {0.0,1.0};
 		rot[0] = cos(20*g_angle1) * rot[0] + sin(20*g_angle1) * rot[1];
 		rot[1] = -sin(20*g_angle1) * rot[0] + cos(20*g_angle1) * rot[1];
 		glRotatef(g_angle1 * 20, 0.0, 1.0, 0.0);//左右回転。この回転軸も回してあげる必要がある
-		glRotatef(-g_angle2 * 20, 0.0, 0.0, -1.0);//上下回転
+		glRotatef(-g_angle2 * 20, 0.0, 0.0, -1.0);//上下回転*/
+		float verticle_vec[2] = {-g_angle2, g_angle1};
+		glRotatef(20*sqrt(g_angle2*g_angle2 + g_angle1*g_angle1), verticle_vec[0]/*sin(g_angle1)*/, -verticle_vec[1], verticle_vec[0]/*cos(g_angle1)*/);
 	}
 
 	switch(g_display_mode){

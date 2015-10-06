@@ -27,7 +27,6 @@ double g_angle4 = 3.141592/4;
 double g_distance = 20.0;
 bool g_isLeftButtonOn = false;
 bool g_isRightButtonOn = false;
-bool g_display_second_light = false;
 
 int main(int argc, char *argv[]){
 	/* OpenGLの初期化 */
@@ -66,15 +65,9 @@ void set_callback_functions(){
 
 void glut_keyboard(unsigned char key, int x, int y){
 	switch(key){
-		case '1':
-		g_display_second_light = false;
-		break;
-		case '2':
-		g_display_second_light = true;
-		break;
-		case 'q':
-		case 'Q':
-		case '\033':
+	case 'q':
+	case 'Q':
+	case '\033':
 		exit(0);
 	}
 	glutPostRedisplay();
@@ -127,24 +120,21 @@ void glut_display(){
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	if (cos(g_angle2)>0){
-		gluLookAt(g_distance * cos(g_angle2) * sin(g_angle1), 
-			g_distance * sin(g_angle2), 
-			g_distance * cos(g_angle2) * cos(g_angle1), 
-			0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-	}
+	gluLookAt(g_distance * cos(g_angle2) * sin(g_angle1), 
+		g_distance * sin(g_angle2), 
+		g_distance * cos(g_angle2) * cos(g_angle1), 
+		0.0, 0.0, 0.0, 0.0, 1.0, 0.0);}
 	else{
-		gluLookAt(g_distance * cos(g_angle2) * sin(g_angle1), 
-			g_distance * sin(g_angle2), 
-			g_distance * cos(g_angle2) * cos(g_angle1), 
-			0.0, 0.0, 0.0, 0.0, -1.0, 0.0);
-	}
+	gluLookAt(g_distance * cos(g_angle2) * sin(g_angle1), 
+		g_distance * sin(g_angle2), 
+		g_distance * cos(g_angle2) * cos(g_angle1), 
+		0.0, 0.0, 0.0, 0.0, -1.0, 0.0);}
 
 	GLfloat lightpos[] = {5 * cos(g_angle4) * sin(g_angle3), 
 		5 * sin(g_angle4), 
 		5 * cos(g_angle4) * cos(g_angle3),  
-		1.0
-	};
-	GLfloat diffuse[] = {1.0, 1.0, 1.0, 1.0};//RGBA
+		1.0};
+	GLfloat diffuse[] = {1.0, 1.0, 1.0, 1.0};
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
@@ -155,31 +145,11 @@ void glut_display(){
 	glutSolidSphere(0.2, 50, 50);
 	glPopMatrix();
 
+	/* hatena */
+	/* hatena */
 
-	if(g_display_second_light){
-		glPushMatrix();
-		glTranslatef(-5 * cos(g_angle4) * sin(g_angle3), 5 * sin(g_angle4), 
-			-5 * cos(g_angle4) * cos(g_angle3));
-		glutSolidSphere(0.2, 50, 50);
-		glPopMatrix();
-	}
-
-	glEnable(GL_LIGHTING);
-	glEnable(GL_LIGHT0);
-	if(g_display_second_light){
-		GLfloat lightpos2[] = {-5 * cos(g_angle4) * sin(g_angle3), 
-			5 * sin(g_angle4), 
-			-5 * cos(g_angle4) * cos(g_angle3),  
-			1.0
-		};
-		GLfloat diffuse2[] = {1.0, 1.0, 1.0, 1.0};//RGBA
-		glEnable(GL_LIGHT1);
-		glLightfv(GL_LIGHT1, GL_POSITION, lightpos2);
-		glLightfv(GL_LIGHT1, GL_DIFFUSE, diffuse2);
-	}
-
-	glLightfv(GL_LIGHT0, GL_POSITION, lightpos);
-	glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+	/* hatena */
+	/* hatena */
 
 
 	glPushMatrix();
@@ -194,10 +164,8 @@ void glut_display(){
 
 	glFlush();
 
-	if(g_display_second_light) glDisable(GL_LIGHT1);
-
-	glDisable(GL_LIGHT0);
-	glDisable(GL_LIGHTING);
+	/* hatena */
+	/* hatena */
 	glDisable(GL_DEPTH_TEST);
 
 	glutSwapBuffers();
@@ -262,12 +230,12 @@ void draw_pyramid(){
 
 void draw_plane(){
 	GLfloat facecolor[] = {0.9, 0.9, 0.9, 1.0};
-	glMaterialfv(GL_FRONT, GL_DIFFUSE, facecolor);
-	glNormal3d(0., 1., 0.);// glNormal3d(0., 1., 0.);
-	glBegin(GL_QUADS);
-	glVertex3d(4.0, 0.0, 4.0);
-	glVertex3d(4.0, 0.0, -4.0);
-	glVertex3d(-4.0, 0.0, -4.0);
-	glVertex3d(-4.0, 0.0, 4.0);
-	glEnd();
+	/* hatena */
+	/* hatena */
+	/* hatena */
+	/* hatena */
+	/* hatena */
+	/* hatena */
+	/* hatena */
+	/* hatena */
 }

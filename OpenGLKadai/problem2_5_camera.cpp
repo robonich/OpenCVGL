@@ -21,7 +21,7 @@ void glut_keyboard(unsigned char key, int x, int y);
 void glut_mouse(int button, int state, int x, int y);
 void glut_motion(int x, int y);
 void glut_idle();
-//void glut_timer(int value);
+void glut_timer(int value);
 void draw_pyramid();
 void set_texture();
 void set_camera_texture();
@@ -33,8 +33,11 @@ double g_angle2 = -3.141592/6;
 double g_distance = 10.0;
 bool g_isLeftButtonOn = false;
 bool g_isRightButtonOn = false;
-GLuint g_TextureHandles[3] = {0,0,0};
+GLuint g_TextureHandles[6] = {0,0,0,0,0,0};
 
+cv::Mat frame, frame1;
+cv::Mat bitwised, grayscaled;
+cv::VideoCapture cap;
 
 int main(int argc, char *argv[]){
 	/* OpenGLの初期化 */
@@ -63,7 +66,7 @@ void init(){
 	glClearColor(0.2, 0.2, 0.2, 0.2);
 	glGenTextures(4, g_TextureHandles);//4つめはカメラ映像
 
-	for(int i = 0; i < 4; i++){
+	for(int i = 0; i < 5; i++){
 		glBindTexture(GL_TEXTURE_2D, g_TextureHandles[i]);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURE_WIDTH,
@@ -82,8 +85,8 @@ void set_callback_functions(){
 	glutMouseFunc(glut_mouse);
 	glutMotionFunc(glut_motion);
 	glutPassiveMotionFunc(glut_motion);
-	glutIdleFunc(glut_idle);
-	//glutTimerFunc(10, glut_timer, 0);
+	// glutIdleFunc(glut_idle);
+	glutTimerFunc(20, glut_timer, 0);
 }
 
 void glut_keyboard(unsigned char key, int x, int y){
@@ -162,21 +165,34 @@ void glut_display(){
 	glFlush();
 	glDisable(GL_DEPTH_TEST);
 
-	glutSwapBuffers();
+	glutSwapBuffers();//display のいれかえ
 }
 
-// void glut_timer(int value){
-// 	cap >> frame;
-// 	cv::cvtColor(frame, frame, CV_BGR2RGB);
+void glut_timer(int value){
+	cap >> frame;
+	cv::cvtColor(frame, frame, CV_BGR2RGB);
+	cv::resize(frame, frame1, cv::Size(512, 512));//バッファサイズを合わせるのが大事
 
-// 	glBindTexture(GL_TEXTURE_2D, g_TextureHandles[3]);
-// 	glTexSubImage2D(GL_TEXTURE_2D, 0,
-// 		(TEXTURE_WIDTH - frame.cols) / 2.0,
-// 		(TEXTURE_HEIGHT - frame.rows) / 2.0,
-// 		frame.cols, frame.rows,
-// 		GL_RGB, GL_UNSIGNED_BYTE, frame.data);
-// 	glutPostRedisplay();
-// }
+	glBindTexture(GL_TEXTURE_2D, g_TextureHandles[3]);
+	glTexSubImage2D(GL_TEXTURE_2D, 0,
+		(TEXTURE_WIDTH - frame1.cols) / 2.0,
+		(TEXTURE_HEIGHT - frame1.rows) / 2.0,
+		frame1.cols, frame1.rows,
+		GL_RGB, GL_UNSIGNED_BYTE, frame1.data);
+
+	cv::bitwise_not(frame1, bitwised);
+
+	glBindTexture(GL_TEXTURE_2D, g_TextureHandles[4]);
+	glTexSubImage2D(GL_TEXTURE_2D, 0,
+		(TEXTURE_WIDTH - bitwised.cols) / 2.0,
+		(TEXTURE_HEIGHT - bitwised.rows) / 2.0,
+		bitwised.cols, bitwised.rows,
+		GL_RGB, GL_UNSIGNED_BYTE, bitwised.data);
+
+	glutPostRedisplay();
+	glutTimerFunc(20 , glut_timer , 0);//timerの中でもう一度呼んであげるのが大事
+}
+
 
 void glut_idle(){
 	static int counter = 0;
@@ -191,6 +207,17 @@ void glut_idle(){
 
 	counter++;
 	if(counter > 3000) counter = 0;
+
+	cap >> frame;
+	cv::cvtColor(frame, frame, CV_BGR2RGB);
+	cv::resize(frame, frame1, cv::Size(512, 512));//バッファサイズを合わせるのが大事
+
+	glBindTexture(GL_TEXTURE_2D, g_TextureHandles[3]);
+	glTexSubImage2D(GL_TEXTURE_2D, 0,
+		(TEXTURE_WIDTH - frame1.cols) / 2.0,
+		(TEXTURE_HEIGHT - frame1.rows) / 2.0,
+		frame1.cols, frame1.rows,
+		GL_RGB, GL_UNSIGNED_BYTE, frame1.data);
 
 	glutPostRedisplay();
 }
@@ -221,21 +248,27 @@ void draw_pyramid(){
 	glEnable(GL_TEXTURE_2D);
 	glColor3d(1.0, 1.0, 1.0);
 	glBegin(GL_TRIANGLES);
-	glTexCoord2d(0.5, 1.0);
+	glTexCoord2d(0.5, 0.0);
 	glVertex3dv(pointO);
-	glTexCoord2d(1.0, 0.0);
+	glTexCoord2d(1.0, 1.0);
 	glVertex3dv(pointB);
-	glTexCoord2d(0.0, 0.0);
+	glTexCoord2d(0.0, 1.0);
 	glVertex3dv(pointC);
 	glEnd();
 	glDisable(GL_TEXTURE_2D);
 
+	glBindTexture(GL_TEXTURE_2D, g_TextureHandles[4]);
+	glEnable(GL_TEXTURE_2D);
 	glColor3d(0.0, 1.0, 1.0);
 	glBegin(GL_TRIANGLES);
+	glTexCoord2d(0.5, 0.0);
 	glVertex3dv(pointO);
+	glTexCoord2d(1.0, 1.0);
 	glVertex3dv(pointC);
+	glTexCoord2d(0.0, 1.0);
 	glVertex3dv(pointD);
 	glEnd();
+	glDisable(GL_TEXTURE_2D);
 
 	glColor3d(1.0, 0.0, 1.0);
 	glBegin(GL_TRIANGLES);
@@ -265,7 +298,7 @@ void draw_pyramid(){
 }
 
 void set_camera_texture(){
-	//cap.open(0);
+	cap.open(0);
 }
 
 void set_texture(){
