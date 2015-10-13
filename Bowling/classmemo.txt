@@ -1,0 +1,25 @@
+//どんなクラスを作るか、どんな継承をさせるかを考えるためのメモ
+
+class Bowl{
+	radius
+	position//座標
+	direction//動きの向き
+	mass
+}
+
+class Pin{//円柱であるとする
+	height
+	radius
+	position
+	direction
+	mass
+}
+
+class Floor{
+	coefficient_of_friction
+	position
+}
+
+//作るべき関数
+addForce
+
