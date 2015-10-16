@@ -21,6 +21,9 @@ using namespace boost::numeric;         // boost::numeric 名前空間を使用(
 
 #define DT 0.05 //dt
 
+//typedef
+typedef vector<double> dpoint;
+
 void init_GL(int argc, char *argv[]);
 void init();
 void set_callback_functions();
@@ -36,20 +39,22 @@ class Sphere//sphere class
 public:
 	double radius;
 	double mass;
-	std::vector<double> pos;//pos size is 3
-	std::vector<double> velocity = {0,0,0};// velocity size is 3
+	dpoint pos;//pos size is 3
+	dpoint velocity;// velocity size is 3
+	velocity(0) = 0; velocity(1) = 0; velocity(2);
 	Sphere *back_up;
 	bool hasChild;
 
 	enum DRAW_TYPE { SOLID = 0, WIRE = 1};
 
 	Sphere();
-	Sphere(double _radius, double _mass, std::vector<double> _pos);
+	Sphere(double _radius, double _mass, dpoint _pos(3));
+	Sphere(double _radius, double _mass, dpoint _pos(3), bool _hasChild);
 	Sphere(double _radius, double _mass, std::vector<double> _pos, bool _hasChild);
 	~Sphere(){ if(hasChild) delete back_up; }//もしバックアップを持っていたら、子供の領域を開放する
 
 	void addForce(double x, double y, double z, double force);//ある方向に力を加える
-	void addForce(std::vector<double> axis, double force);//axisはsize 3
+	void addForce(dpoint axis(3), double force);//axisはsize 3
 
 	void updatePos();//速度に応じて現在座標を移動させる
 
@@ -61,11 +66,12 @@ public:
 class Floor//floor class
 {
 public:
-	std::vector<double> size;//size size is 2
-	std::vector<double> pos;//pos size is 3
+	dpoint size(2);//size size is 2
+	dpoint pos(3);//pos size is 3
 	double coe_fric; //摩擦係数0<=coe<=1
 
 	Floor();
+	Floor(dpoint _size(2), dpoint _pos(3), double _coe_fric);
 	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric);
 
 	bool isTouchedSphere(Sphere &s);
@@ -76,8 +82,9 @@ public:
 class Pin //pin class //接触判定は円柱で行う
 {
 public:
-	std::vector<double> pos;
-	std::vector<double> velocity = {0,0,0};
+	dpoint pos(3);
+	dpoint velocity(3);
+	vec(1) = 0; vec(2) = 0; vec(0) = 0;
 	double radius;
 	double height;
 	double mass;
@@ -86,8 +93,9 @@ public:
 	GLUquadricObj *cylinder;//円柱を描くために必要なもの
 
 	Pin();
-	Pin(std::vector<double> _pos, double _radius, double _height, double _mass);
-	Pin(std::vector<double> _pos, double _radius, double _height, double _mass, bool _hasChild);
+	Pin(dpoint _pos(3), double _radius, double _height, double _mass);
+	Pin(dpoint _pos(3), double _radius, double _height, double _mass, bool _hasChild);
+	Pin(std::vector<double> _pos(3),  double _radius, double _height, double _mass, bool _hasChild);
 	~Pin(){ if(hasChild) delete back_up; gluDeleteQuadric(cylinder);};
 
 	void updatePos();
@@ -267,6 +275,7 @@ void specialkeydown(int key, int x, int y)
  }
 
  Sphere::Sphere() : Sphere(0.25, 0.1, {0,0,0}, false){}
+ Sphere::Sphere() 
  Sphere::Sphere(double _radius, double _mass, std::vector<double> _pos) : Sphere(_radius, _mass, _pos, false){}
  Sphere::Sphere(double _radius, double _mass, std::vector<double> _pos, bool _hasChild) : radius(_radius), mass(_mass), pos(_pos), hasChild(_hasChild){
  	if (hasChild){
