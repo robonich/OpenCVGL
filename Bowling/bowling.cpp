@@ -5,16 +5,6 @@
 #include <vector>
 #include <math.h>
 
-#include <boost/numeric/ublas/matrix.hpp>         // (1) 普通の行列用のヘッダ
-#include <boost/numeric/ublas/triangular.hpp>     // (2) 三角行列用のヘッダ
-#include <boost/numeric/ublas/symmetric.hpp>      // (3) 対称行列用のヘッダ
-#include <boost/numeric/ublas/hermitian.hpp>      // (4) エルミート行列用のヘッダ
-#include <boost/numeric/ublas/matrix_sparse.hpp>  // (5) 疎行列用のヘッダ
-#include <boost/numeric/ublas/vector.hpp>         // (6) ベクトル用のヘッダ
-#include <boost/numeric/ublas/vector_sparse.hpp>  // (7) 疎ベクトル用のヘッダ
-using namespace boost::numeric::ublas;  // boost::numeric::ublas 名前空間を使用
-using namespace boost::numeric;         // boost::numeric 名前空間を使用(※下注)
-
 #define WINDOW_X (500)
 #define WINDOW_Y (500)
 #define  WINDOW_NAME "bowling"
