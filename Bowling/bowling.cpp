@@ -5,6 +5,16 @@
 #include <vector>
 #include <math.h>
 
+#include <boost/numeric/ublas/matrix.hpp>         // (1) 普通の行列用のヘッダ
+#include <boost/numeric/ublas/triangular.hpp>     // (2) 三角行列用のヘッダ
+#include <boost/numeric/ublas/symmetric.hpp>      // (3) 対称行列用のヘッダ
+#include <boost/numeric/ublas/hermitian.hpp>      // (4) エルミート行列用のヘッダ
+#include <boost/numeric/ublas/matrix_sparse.hpp>  // (5) 疎行列用のヘッダ
+#include <boost/numeric/ublas/vector.hpp>         // (6) ベクトル用のヘッダ
+#include <boost/numeric/ublas/vector_sparse.hpp>  // (7) 疎ベクトル用のヘッダ
+using namespace boost::numeric::ublas;  // boost::numeric::ublas 名前空間を使用
+using namespace boost::numeric;         // boost::numeric 名前空間を使用(※下注)
+
 #define WINDOW_X (500)
 #define WINDOW_Y (500)
 #define  WINDOW_NAME "bowling"
@@ -67,6 +77,7 @@ class Pin //pin class //接触判定は円柱で行う
 {
 public:
 	std::vector<double> pos;
+	std::vector<double> velocity = {0,0,0};
 	double radius;
 	double height;
 	double mass;
@@ -81,15 +92,29 @@ public:
 
 	void updatePos();
 	void draw();
+	void reset();
 
 	bool isBottonOnFloor();
 	bool isTouchedPin();
 	bool isTouchedBowl(Sphere &s);
+
+	void collisionReactionWith(Sphere &s);
+	void collisionReactionWith(Pin &s);
 };
 
 Sphere bowl(0.5, 0.5, {0.0,0.5,0.0}, true);
 Floor floor1({5,30}, {0,0,-15}, 0);
-Pin pin1({0,1.5,-25}, 0.3, 3, 0.3, false);
+Pin pin1[] = { Pin({1,1.5,-25}, 0.3, 1.5, 0.3, true),
+						  Pin({0,1.5,-22}, 0.3, 1.5, 0.3, true),
+						  Pin({1,1.5,-19}, 0.3, 1.5, 0.3, true),
+						  Pin({0,1.5,-16}, 0.3, 1.5, 0.3, true),
+						  Pin({3,1.5,-25}, 0.3, 1.5, 0.3, true),
+						  Pin({-3,1.5,-25}, 0.3, 1.5, 0.3, true),
+						  Pin({-1,1.5,-25}, 0.3, 1.5, 0.3, true),
+						  Pin({-2,1.5,-22}, 0.3, 1.5, 0.3, true),
+						  Pin({2,1.5,-22}, 0.3, 1.5, 0.3, true),
+						  Pin({-1,1.5,-19}, 0.3, 1.5, 0.3, true)
+						};
 
 bool upkeydown = false; //false: key up, true: key down
 bool downkeydown = false;
@@ -162,6 +187,7 @@ void glut_keyboard(unsigned char key, int x, int y){
 		break;
 		case 'r':
 		bowl.reset();
+		for(auto &i : pin1) i.reset();
 		break;
 	}
 	glutPostRedisplay();
@@ -202,7 +228,12 @@ void specialkeydown(int key, int x, int y)
  	if(iskeydown['a']) {bowl.addForce({-1.0, 0.0, 0.0}, 1.0); /*leftkeydown = false;*/}
  	if(iskeydown['d']) {bowl.addForce({1.0, 0.0, 0.0}, 1.0); /*rightkeydown = false;*/}
  	bowl.updatePos();
- 	std::cout << pin1.isTouchedBowl(bowl) << "\n";
+
+ 	for(auto &i : pin1){
+ 		i.collisionReactionWith(bowl);
+ 		i.updatePos();
+ 		// std::cout << pin1.isTouchedBowl(bowl) << "\n";
+	}
  	// std::cout << bowl.pos[0] << "\t" << bowl.pos[1] << "\t" << bowl.pos[2] << "\t" << floor1.pos[0] << "\t" << floor1.pos[1] << "\t" << floor1.pos[2] << "\t" << floor1.isTouchedSphere(bowl) <<"\n";
  	if(!floor1.isTouchedSphere(bowl)) bowl.reset();
  	glutPostRedisplay();
@@ -225,7 +256,9 @@ void specialkeydown(int key, int x, int y)
 
  	bowl.draw(Sphere::WIRE);
  	floor1.draw();
- 	pin1.draw();
+ 	for(auto &i : pin1){
+ 		i.draw();
+ 	}
 
  	glFlush();
  	glDisable(GL_DEPTH_TEST);
@@ -308,12 +341,18 @@ pos(_pos), radius(_radius), height(_height), mass(_mass), hasChild(_hasChild) {
 	cylinder = gluNewQuadric();
 }
 
-void Pin::updatePos(){}
+
+
+void Pin::updatePos(){
+	pos[0] += velocity[0] * DT;
+	pos[1] += velocity[1] * DT;
+	pos[2] += velocity[2] * DT;
+}
 void Pin::draw(){
 	glPushMatrix();
-	// glRotatef(90.0f,0.0f,0.0f);
 	glColor3d(1.0,0,1.0);
 	glTranslatef(pos[0], pos[1], pos[2]);
+	glRotatef(90,1,0,0);//degree, x, y, z
 	gluQuadricDrawStyle(cylinder, GLU_FILL);
 	gluCylinder(cylinder, radius, radius, height, 30, 30);
 	glPopMatrix();
@@ -329,4 +368,20 @@ bool Pin::isTouchedBowl(Sphere &s){
 	double dist = sqrt(dx*dx + dy*dy);
 	if(dist < radius + s.radius) return true;
 	else return false;
+}
+void Pin::collisionReactionWith(Sphere &s){
+	if(isTouchedBowl(s)){
+		std::vector<double> direction;
+
+		velocity[0] = s.mass / mass * s.velocity[0];
+		velocity[1] = s.mass / mass * s.velocity[1];
+		velocity[2] = s.mass / mass * s.velocity[2];
+	}
+}
+void Pin::reset(){
+	*this = *back_up;
+}
+
+void Pin::collisionReactionWith(Pin &s){
+
 }
