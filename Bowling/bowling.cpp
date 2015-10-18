@@ -386,21 +386,15 @@ bool Pin::isTouchedBowl(Sphere &s){
 }
 void Pin::collisionReactionWith(Sphere &s){
 	if(isTouchedBowl(s)){
-			printf("a");
-		std::vector<double> direction;
-		direction[1] = 0;
-		direction[0] = s.pos[0] - pos[0];
-		//direction[1] = s.pos[1] - pos[1];
-		direction[2] = s.pos[2] - pos[2];
-		//normalization
+		std::vector<double> direction = {s.pos[0] - pos[0], 0, s.pos[2] - pos[2]};
+		// normalization
 		double mag_of_direction = sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
 		direction[0] /= mag_of_direction;
-		//direction[1] /= mag_of_direction;
 		direction[2] /= mag_of_direction;
 
 		double costheta = get_costheta_of_vectors(s.velocity, direction);
 
-		std::cout << costheta <<std::endl;
+		// std::cout << costheta <<std::endl;
 
 		double mag_of_svelocity = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
 
