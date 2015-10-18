@@ -6,6 +6,7 @@
 #include <math.h>
 #include <opencv2/opencv.hpp>
 #include <thread>
+#include <pthread.h>
 #include <iostream>
 #include <chrono>
 
@@ -28,8 +29,15 @@ void glut_keyboardup(unsigned char key, int x, int y);
 //openCV
 void openCV_main();
 void face_and_body_detection();
-void detect_move(cv::VideoCapture cap, cv::Mat frame);
+void detect_move();
 void detect_face_slope();
+void cv_idle();
+
+//mutex
+pthread_mutex_t mCVmode;
+
+//other function
+double get_costheta_of_vectors(std::vector<double> a, std::vector<double> b);
 
 //class
 class Sphere//sphere class
@@ -378,11 +386,27 @@ bool Pin::isTouchedBowl(Sphere &s){
 }
 void Pin::collisionReactionWith(Sphere &s){
 	if(isTouchedBowl(s)){
+			printf("a");
 		std::vector<double> direction;
+		direction[1] = 0;
+		direction[0] = s.pos[0] - pos[0];
+		//direction[1] = s.pos[1] - pos[1];
+		direction[2] = s.pos[2] - pos[2];
+		//normalization
+		double mag_of_direction = sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
+		direction[0] /= mag_of_direction;
+		//direction[1] /= mag_of_direction;
+		direction[2] /= mag_of_direction;
 
-		velocity[0] = s.mass / mass * s.velocity[0];
-		velocity[1] = s.mass / mass * s.velocity[1];
-		velocity[2] = s.mass / mass * s.velocity[2];
+		double costheta = get_costheta_of_vectors(s.velocity, direction);
+
+		std::cout << costheta <<std::endl;
+
+		double mag_of_svelocity = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
+
+		velocity[0] = s.mass / mass * direction[0] * costheta * mag_of_svelocity;
+		velocity[1] = s.mass / mass * direction[1] * costheta * mag_of_svelocity;
+		velocity[2] = s.mass / mass * direction[2] * costheta * mag_of_svelocity;
 	}
 }
 void Pin::reset(){
@@ -390,6 +414,18 @@ void Pin::reset(){
 }
 
 void Pin::collisionReactionWith(Pin &s){
+}
+
+double get_costheta_of_vectors(std::vector<double> a, std::vector<double> b){
+	double magA = 0, magB = 0, naiseki = 0;
+	for(int i = 0; i < 3; i++){
+		if(i == 1) continue;
+		magA += a[i] * a[i];
+		magB += b[i] * b[i];
+		naiseki += a[i] * b[i];
+	}
+	magA = sqrt(magA); magB = sqrt(magB);
+	return naiseki/magA/magB;
 }
 
 
@@ -400,6 +436,8 @@ cv::Mat frame, preFrame;
 cv::VideoCapture cap;
 
 double angularVelocity;//首の回転から得られる角速度。これを球に反映させる
+double throwDirection[3];//ボールを投げるときの力。ただしy方向は常に0;
+double throwForce;
 
 void openCV_main(){
 	std::string  cascadeUpBodyFile = "/usr/local/share/OpenCV/haarcascades/haarcascade_upperbody.xml";
@@ -420,11 +458,11 @@ void openCV_main(){
 	if(frame.empty()) exit(0);
 
 	while(1){
-		preFrame.create(s, CV_32FC3);
-		frame.copyTo(preFrame);
 		cap>>frame;
 		if(frame.empty()) exit(0);
 		cv::flip(frame, frame, 1);
+		preFrame.create(frame.size(), CV_32FC3);
+		frame.copyTo(preFrame);
 
 		switch(CVmode){
 			case 0://顔の左半面への移動検出
@@ -434,8 +472,10 @@ void openCV_main(){
 			face_and_body_detection();
 			break;
 			case 2://右手の移動検出
-			//detect_move();
+			detect_move();
 			break;
+			case 3://待機状態
+			cv_idle();
 		}
 		auto key = cv::waitKey(5);
 		if(key == 'q' || key == 'Q') break;
@@ -446,9 +486,13 @@ void openCV_main(){
 	return;
 }
 
+void cv_idle(){//また投げる時まではただ映像を流し続ける
+	cv::imshow("input", frame);
+}
+
 void detect_face_slope(){
 	static bool detectSlopeFlag = false;
-	double scale = 4.0;
+	double scale = 2.0;
 	cv::Mat gray, smallImg(cv::saturate_cast<int>(frame.rows/scale), cv::saturate_cast<int>(frame.cols/scale), CV_8UC1);
 	static auto start = std::chrono::system_clock::now();
 
@@ -514,7 +558,9 @@ void detect_face_slope(){
 				printf("RETRY!!");
 			}else{
 				rotateFlag = false;
+				pthread_mutex_lock( &mCVmode);;
 				CVmode = 1;
+				pthread_mutex_unlock( &mCVmode);
 
 				angularVelocity = avg_theta;
 			}
@@ -538,8 +584,9 @@ void face_and_body_detection(){
 		2,
 		CV_HAAR_SCALE_IMAGE);
 
+	static cv::Point faceCenter;
+
 	for(int i = 0; i<(faces.size() != 0 ? 1 : 0); ++i){
-		cv::Point faceCenter;
 		int faceRadius, faceWidth, faceHeight;
 		faceCenter.x = cv::saturate_cast<int>((faces[i].x + faces[i].width*0.5)*scale);
 		faceCenter.y = cv::saturate_cast<int>((faces[i].y + faces[i].height*0.5)*scale);
@@ -549,16 +596,21 @@ void face_and_body_detection(){
 
 		cv::Rect roi_rect(faceCenter.x - faceWidth, faceCenter.y - faceHeight, faceWidth*2, faceHeight*2);
 		cv::Mat cutFace = frame(roi_rect);
-		if(faceCenter.x < 160 && faceCenter.y > 0) CVmode = 1; //move to next detection
 		cv::imshow("cutFace", cutFace);
 	}
-
-	cv::line(frame, {240, 0}, {240, 480}, cv::Scalar(0,0,255), 5, 8, 0);
+	if(faceCenter.x < 160 && faceCenter.y > 0){
+		pthread_mutex_lock( &mCVmode);;
+		CVmode = 2; //move to next detection
+		pthread_mutex_unlock( &mCVmode);
+		cv::line(frame, {160, 0}, {160, 480}, cv::Scalar(255,0,0), 5, 8, 0);	
+	}  else {
+		cv::line(frame, {160, 0}, {160, 480}, cv::Scalar(0,0,255), 5, 8, 0);
+	}
 	cv::imshow("input", frame);
 	return;
 }
 
-void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えていれば良いから
+void detect_move(){//右反面だけ考えていれば良いから
 	int INIT_TIME = 50;
 	double B_PARAM = 1.0 / 50.0;
 	double T_PARAM = 1.0 / 200.0;
@@ -589,11 +641,17 @@ void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えて
 
 		for( int i = 0; i < INIT_TIME; i++){
 			cap >> frame;
-			if(frame.empty()) break;
-
+			if(frame.empty()) return;
+			cv::flip(frame, frame, 1);
+			
+			cv::Mat linedFrame = frame.clone();
+			cv::line(linedFrame, {160, 0}, {160, 480}, cv::Scalar(255,0,0), 5, 8, 0);
+			cv::imshow("input", linedFrame);
+			
 			cv::Mat tmp;
 			frame.convertTo(tmp, avg_img.type());
 			cv::accumulate(tmp, avg_img);
+			cv::waitKey(3);
 		}
 
 		avg_img.convertTo(avg_img, -1,1.0 / INIT_TIME);
@@ -601,15 +659,20 @@ void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えて
 
 		for( int i = 0; i < INIT_TIME; i++){
 			cap >> frame;
-			if(frame.empty()) {
-				return;
-			}
+			if(frame.empty()) return;
+			cv::flip(frame, frame, 1);
+			
+			cv::Mat linedFrame = frame.clone();
+			cv::line(linedFrame, {160, 0}, {160, 480}, cv::Scalar(255,0,0), 5, 8, 0);
+			cv::imshow("input", linedFrame);
+
 			frame.convertTo(tmp_img, avg_img.type());
 			cv::subtract(tmp_img, avg_img, tmp_img);
 			cv::pow(tmp_img, 2.0, tmp_img);
 			tmp_img.convertTo(tmp_img, -1, 2.0);
 			cv::sqrt(tmp_img, tmp_img);
-			cv::accumulate(tmp_img, sgm_img);	
+			cv::accumulate(tmp_img, sgm_img);
+			cv::waitKey(3);	
 		}
 		sgm_img.convertTo(sgm_img, -1, 1.0 / INIT_TIME);
 		init = true;
@@ -641,10 +704,78 @@ void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えて
 	dst_img = cv::Scalar(0);
 	frame.copyTo(dst_img, msk_img);
 
-	cv::medianBlur(msk_img, msk_img, 3);
+	cv::medianBlur(msk_img, msk_img, 5);
+	// cv::fastNlMeansDenoising(msk_img, msk_img, 3, 7, 21);
+	const cv::Point a(350, 80);
+	const cv::Point b(640, 400);
+	static cv::Point bottomPos(0, b.y), upPos(0, a.y);
+	std::vector<int> posXOfWhiteOfBottom;
+	std::vector<int> posXOfWhiteOfUp;
+	static int detectMotionMode = 0;
 
-	// cv::imshow("Input", frame);
-	// cv::imshow("FG", dst_img);
+	static auto start = std::chrono::system_clock::now();
+	static auto end = std::chrono::system_clock::now();
+	static auto temp = std::chrono::system_clock::now();
+
+	switch (detectMotionMode) {
+		case 0:
+		for(int i = a.x; i < b.x; i++){
+			uchar j = msk_img.at<uchar>(b.y,i);
+			if(j == 255) posXOfWhiteOfBottom.push_back(i);
+		}
+		if(posXOfWhiteOfBottom.size() > 10){
+			start = std::chrono::system_clock::now();
+
+			for(auto p: posXOfWhiteOfBottom){
+				bottomPos.x += p;
+			}
+			bottomPos.x /= (int) posXOfWhiteOfBottom.size();
+			detectMotionMode = 1;//下が検出されたので上の検出に移る
+		}
+		break;
+		case 1:
+		temp = std::chrono::system_clock::now();
+		if(std::chrono::duration_cast<std::chrono::milliseconds>(temp-start).count() < 2000){//一定時間上が検出されるのを待つ
+			// std::cout <<  std::chrono::duration_cast<std::chrono::milliseconds>(temp-start).count() << std::endl;
+			for(int i = a.x; i < b.x; i++){
+				uchar j = msk_img.at<uchar>(a.y, i);
+				if(j == 255) posXOfWhiteOfUp.push_back(i);
+			}
+			if(posXOfWhiteOfUp.size() > 10){
+				end = std::chrono::system_clock::now();
+				for(auto p: posXOfWhiteOfUp){	
+					upPos.x += p;
+				}
+				upPos.x /= (int) posXOfWhiteOfUp.size();
+				throwDirection[0] = upPos.x - bottomPos.x;
+				throwDirection[1] = 0;
+				throwDirection[2] = upPos.y - bottomPos.y;//yが負ならzの奥方向を向く
+				throwForce = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+				pthread_mutex_lock( &mCVmode);;
+				CVmode = 3;
+				pthread_mutex_unlock( &mCVmode);
+			} else{
+				detectMotionMode = 1;//ここでループさせるようにする
+			}
+		}else {
+			throwDirection[0] = 0;
+			throwDirection[1] = 0;
+			throwDirection[2] = 0;
+			throwForce = 0;
+			bottomPos = cv::Point(0, b.y);
+			upPos = cv::Point(0, b.y);
+			detectMotionMode = 0;//検出ミスなのでまた最初に戻す
+			printf("RETRY!!!");
+		}
+		// std::cout << upPos.x << ", " << bottomPos.x << ", " <<throwDirection[0] <<  ", "<< throwDirection[1] << ", " << throwDirection[2] << "\t" << throwForce << std::endl;
+		break;
+	}
+
+	cv::rectangle(frame, {350, 80}, {640, 400}, cv::Scalar(255), 5, 8, 0);
+	cv::rectangle(msk_img, {350, 80}, {640, 400}, cv::Scalar(255), 5, 8, 0);
+	cv::line(frame, {160, 0}, {160, 480}, cv::Scalar(255,0,0), 5, 8, 0);
+	cv::imshow("input", frame);
+
 	cv::imshow("mask", msk_img);
 	return;
 }
