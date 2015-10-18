@@ -7,6 +7,7 @@
 #include <opencv2/opencv.hpp>
 #include <thread>
 #include <iostream>
+#include <chrono>
 
 #define WINDOW_X (500)
 #define WINDOW_Y (500)
@@ -395,7 +396,7 @@ void Pin::collisionReactionWith(Pin &s){
 //OpenCV global variable
 int CVmode = 0;
 cv::CascadeClassifier cascadeFace, cascadeUpbody;
-cv::Mat frame;
+cv::Mat frame, preFrame;
 cv::VideoCapture cap;
 
 double angularVelocity;//首の回転から得られる角速度。これを球に反映させる
@@ -407,23 +408,30 @@ void openCV_main(){
 	if(!cascadeUpbody.load(cascadeFaceFile/*cascadeUpBodyFile*/)){printf("ERROR: cascadeUpbodyFile not found\n"); exit(0);}
 
 	cv::namedWindow("input", 1);
+	cv::moveWindow("input", 500 , 200);
 	cv::namedWindow("cutFace", 1);
 	cv::namedWindow("mask", 1);
+	cv::namedWindow("video", 1);
 
 	cap.open(0);
 	if(!cap.isOpened()){printf("Cannot open camera.\n"); exit(0);}
 
+	cap>>frame;
+	if(frame.empty()) exit(0);
+
 	while(1){
+		preFrame.create(s, CV_32FC3);
+		frame.copyTo(preFrame);
 		cap>>frame;
 		if(frame.empty()) exit(0);
 		cv::flip(frame, frame, 1);
 
 		switch(CVmode){
 			case 0://顔の左半面への移動検出
-			face_and_body_detection();
+			detect_face_slope();
 			break;
 			case 1://顔の傾き検出
-			detect_face_slope();
+			face_and_body_detection();
 			break;
 			case 2://右手の移動検出
 			//detect_move();
@@ -439,8 +447,10 @@ void openCV_main(){
 }
 
 void detect_face_slope(){
+	static bool detectSlopeFlag = false;
 	double scale = 4.0;
 	cv::Mat gray, smallImg(cv::saturate_cast<int>(frame.rows/scale), cv::saturate_cast<int>(frame.cols/scale), CV_8UC1);
+	static auto start = std::chrono::system_clock::now();
 
 	cv::cvtColor(frame, gray, CV_BGR2GRAY);
 	cv::resize(gray, smallImg, smallImg.size(), 0, 0, cv::INTER_LINEAR);
@@ -451,23 +461,65 @@ void detect_face_slope(){
 		1.1,
 		2,
 		CV_HAAR_SCALE_IMAGE);
-	if(detectSlopeFlag){
+	static cv::Point faceCenter;
+	if(!detectSlopeFlag){
+		if(faces.size() == 0) cv::line(frame, {320, 0}, {320, 480}, cv::Scalar(0,0,255), 5, 8, 0);
 		for(int i = 0; i<(faces.size() != 0 ? 1 : 0); ++i){
-			cv::Point faceCenter;
-			int faceRadius, faceWidth, faceHeight;
 			faceCenter.x = cv::saturate_cast<int>((faces[i].x + faces[i].width*0.5)*scale);
 			faceCenter.y = cv::saturate_cast<int>((faces[i].y + faces[i].height*0.5)*scale);
-			faceRadius = cv::saturate_cast<int>((faces[i].width + faces[i].height)*0.25*scale);
-			faceWidth = cv::saturate_cast<int>(faces[i].width*0.5*scale);
-			faceHeight = cv::saturate_cast<int>(faces[i].height*0.5*scale);
 
-			cv::Rect roi_rect(faceCenter.x - faceWidth, faceCenter.y - faceHeight, faceWidth*2, faceHeight*2);
-			cv::Mat cutFace = frame(roi_rect);
-			if(faceCenter.x < 160 && faceCenter.y > 0) CVmode = 1; //move to next detection
-			cv::imshow("cutFace", cutFace);
+			if(faceCenter.x > 290 &&faceCenter.x < 350 && faceCenter.y > 0){
+				start = std::chrono::system_clock::now();
+				detectSlopeFlag = true;	
+				faceCenter.x = faceCenter.x / scale;
+				faceCenter.y = faceCenter.y / scale;
+			} 
+			else cv::line(frame, {320, 0}, {320, 480}, cv::Scalar(0,0,255), 5, 8, 0);
 		}
-	} 
-	cv::line(frame, {240, 0}, {240, 480}, cv::Scalar(255), 5, 8, 0);
+	} else {//顔が適正な位置に入ったら
+		cv::line(frame, {320, 0}, {320, 480}, cv::Scalar(255), 5, 8, 0);//display blue line
+		auto end = std::chrono::system_clock::now();
+		auto diff = end - start;
+		// std::cout << "elapsed time = "
+		// << std::chrono::duration_cast<std::chrono::milliseconds>(diff).count()
+		// << " msec."
+		// << std::endl;
+		static bool rotateFlag = true;
+		if(std::chrono::duration_cast<std::chrono::milliseconds>(diff).count()>2000 && rotateFlag){
+			cv::Mat whiteFlash;
+			whiteFlash.create(frame.size(),  CV_8UC1);
+			whiteFlash = cv::Scalar(255);
+			cv::Mat rotImg;
+			int theta;
+			std::vector<int> thetaBox;
+			for (theta = -80; theta <= 80; theta+=5){
+				cv::imshow("input", whiteFlash);
+				cv::waitKey(5);
+				cv::warpAffine(smallImg, rotImg, cv::getRotationMatrix2D(faceCenter, theta, 1.0), smallImg.size());
+				cascadeFace.detectMultiScale(rotImg, faces,
+					1.1,
+					1,
+					CV_HAAR_SCALE_IMAGE);
+				if(faces.size() == 0)  continue;
+				thetaBox.push_back(theta);
+			}
+			int avg_theta = 0;
+
+			for(auto t: thetaBox){
+				avg_theta += t/(int)thetaBox.size();
+				std::cout << t <<  "\t" << avg_theta <<  "\t" << thetaBox.size() << "\n";
+			}
+			if(thetaBox.size() == 0){//角度の読み取りに失敗したらもう一度
+				start = std::chrono::system_clock::now();
+				printf("RETRY!!");
+			}else{
+				rotateFlag = false;
+				CVmode = 1;
+
+				angularVelocity = avg_theta;
+			}
+		}
+	}
 	cv::imshow("input", frame);
 	return;
 }
@@ -501,7 +553,7 @@ void face_and_body_detection(){
 		cv::imshow("cutFace", cutFace);
 	}
 
-	cv::line(frame, {240, 0}, {240, 480}, cv::Scalar(255), 5, 8, 0);
+	cv::line(frame, {240, 0}, {240, 480}, cv::Scalar(0,0,255), 5, 8, 0);
 	cv::imshow("input", frame);
 	return;
 }
@@ -521,8 +573,6 @@ void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えて
 	static cv::Mat dst_img, msk_img, bitwised_msk_img;
 
 	static cv::Size s = frame.size();
-
-	static cv::Mat preFrame;
 	
 	if(!init){
 		avg_img.create(s, CV_32FC3);
@@ -549,8 +599,6 @@ void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えて
 		avg_img.convertTo(avg_img, -1,1.0 / INIT_TIME);
 		sgm_img = cv::Scalar(0,0,0);
 
-		preFrame.create(s, CV_32FC3);
-
 		for( int i = 0; i < INIT_TIME; i++){
 			cap >> frame;
 			if(frame.empty()) {
@@ -567,15 +615,6 @@ void detect_move(cv::VideoCapture cap, cv::Mat frame){//右反面だけ考えて
 		init = true;
 		printf("first init\n");
 	}
-
-	frame.copyTo(preFrame);
-
-	cap >> frame;
-
-	// if(frame.empty()){
-	// 	cv::imshow("input", preFrame);
-	// 	break;
-	// }
 
 	frame.convertTo(tmp_img, tmp_img.type());
 
