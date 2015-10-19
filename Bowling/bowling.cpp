@@ -26,6 +26,7 @@ void specialkeydown(int key, int x, int y);
 void glut_timer(int value);
 void glut_keyboardup(unsigned char key, int x, int y);
 static void drawString(void *font, std::string str, int w, int h, int x0, int y0);
+void set_texture();
 
 //openCV
 void openCV_main();
@@ -130,10 +131,16 @@ double throwDirection[3];//ボールを投げるときの力。ただしy方向�
 double throwForce;
 double throwPosX;
 
-//gloval variable
+//GL gloval variable
+#define TEXTURE_HEIGHT (512)
+#define TEXTURE_WIDTH (512)
+std::vector<std::string> inputFileNames = {"lane.jpg"};
+GLuint g_TextureHandles[] = {0};
+
 int gameButton = 0;
 
 Sphere bowl(0.5, 5.8967, {0.0,0.5,0.0}, true);
+
 Floor floor1({FLOOR_W,FLOOR_L}, {0,0,-0.5*FLOOR_L}, 0);
 
 Floor garter1[] = { 
@@ -185,6 +192,18 @@ void init_GL(int argc, char *argv[]){
 }
 
 void init(){
+// 	glGenTextures(3, g_TextureHandles);
+
+// 	for(int i = 0; i < 3; i++){
+// 		glBindTexture(GL_TEXTURE_2D, g_TextureHandles[i]);
+// 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+// 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURE_WIDTH,
+// 			TEXTURE_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+// 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+// 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+// 	}
+// 	set_texture();
+
 	for(int i = 0; i < 127; i++){
 		iskeydown[i] = false;
 		iskeyup[i] = false;
@@ -329,7 +348,14 @@ void glut_timer(int value){
 		// std::cout << pin1.isTouchedBowl(bowl) << "\n";
 	}
 	// std::cout << bowl.pos[0] << "\t" << bowl.pos[1] << "\t" << bowl.pos[2] << "\t" << floor1.pos[0] << "\t" << floor1.pos[1] << "\t" << floor1.pos[2] << "\t" << floor1.isTouchedSphere(bowl) <<"\n";
-	if(!floor1.isTouchedSphere(bowl)) bowl.reset();
+	if(!floor1.isTouchedSphere(bowl)){
+		bowl.reset();
+		angularVelocity = 0;
+		throwDirection[0] = 0; throwDirection[1] = 0; throwDirection[2] = 0;
+		throwPosX = 0;
+		throwForce = 0;
+		CVmode = -1;
+	} 
 	glutPostRedisplay();
 	glutTimerFunc(1.0/DT , glut_timer , 0);
 }
@@ -416,6 +442,25 @@ void glut_display(){
 	glDisable(GL_DEPTH_TEST);
 
 	glutSwapBuffers();
+}
+
+void set_texture(){
+	for(int i=0; i<inputFileNames.size(); i++){
+		cv::Mat input = cv::imread(inputFileNames[i], 1);
+		// BGR -> RGBの変換
+
+		// if(inputFileNames[i] == "lane.jpg"){
+		// 	cv::resize
+		// }
+		cv::cvtColor(input, input, CV_BGR2RGB);
+
+		glBindTexture(GL_TEXTURE_2D, g_TextureHandles[i]);
+		glTexSubImage2D(GL_TEXTURE_2D, 0,
+			(TEXTURE_WIDTH - input.cols) / 2.0,
+			(TEXTURE_HEIGHT - input.rows) / 2.0,
+			input.cols, input.rows,
+			GL_RGB, GL_UNSIGNED_BYTE, input.data);
+	} 
 }
 
 Sphere::Sphere() : Sphere(0.25, 0.1, {0,0,0}, false){}
@@ -520,33 +565,115 @@ bool Pin::isTouchedBowl(Sphere &s){
 	double dx = abs(pos[0]-s.pos[0]);
 	double dy = abs(pos[2]-s.pos[2]);
 	double dist = sqrt(dx*dx + dy*dy);
-	if(dist < radius + s.radius) return true;
+	if(dist <= radius + s.radius) return true;
 	else return false;
 }
 void Pin::collisionReactionWith(Sphere &s){
 	if(isTouchedBowl(s)){
-		std::vector<double> direction = {s.pos[0] - pos[0], 0, s.pos[2] - pos[2]};
-		// normalization
-		double mag_of_direction = sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
-		direction[0] /= mag_of_direction;
-		direction[2] /= mag_of_direction;
+		std::vector<double> v_e = {s.pos[0]-pos[0], 0, s.pos[2]-pos[2]};//衝突軸ベクトル
+		double mag_v = sqrt(v_e[0]*v_e[0]+v_e[1]*v_e[1]+v_e[2]*v_e[2]);
+		v_e = {v_e[0]/mag_v, v_e[1]/mag_v, v_e[2]/mag_v};
 
-		double costheta = get_costheta_of_vectors(s.velocity, direction);
+		std::vector<double> vp_vs = {//vp-vs
+			velocity[0]-s.velocity[0],
+			velocity[0]-s.velocity[0],
+			velocity[0]-s.velocity[0]
+		};
 
-		// std::cout << costheta <<std::endl;
+		double naiseki = v_e[0]*vp_vs[0] + v_e[1]*vp_vs[1] + v_e[2]*vp_vs[2];
 
-		double mag_of_svelocity = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
+		std::vector<double> c = {naiseki*v_e[0], naiseki*v_e[1],naiseki*v_e[2]};
 
-		velocity[0] = s.mass / mass * direction[0] * costheta * mag_of_svelocity;
-		velocity[1] = s.mass / mass * direction[1] * costheta * mag_of_svelocity;
-		velocity[2] = s.mass / mass * direction[2] * costheta * mag_of_svelocity;
+		double Mp = -2*s.mass/(mass+s.mass);
+		double Ms = 2*mass/(mass+s.mass);
 
-		//reaction  to bowl
+		velocity = {
+			Mp*c[0]+velocity[0],
+			Mp*c[1]+velocity[1],
+			Mp*c[2]+velocity[2]
+		};
 
-		s.velocity[0] -= mass / s.mass * velocity[0];
-		s.velocity[1] -= mass / s.mass * velocity[1];
-		s.velocity[2] -= mass / s.mass * velocity[2];
+		s.velocity = {
+			Ms*c[0]+s.velocity[0],
+			Ms*c[1]+s.velocity[1],
+			Ms*c[2]+s.velocity[2]
+		};
+
+		// std::cout<<"in\t"<< velocity[0] << ", " << velocity[1] << ", " << velocity[2] << ", " <<"\t" << s.velocity[0] << ", " << s.velocity[1] << ", " << s.velocity[2] << ", " << std::endl;
+		// std::vector<double> v_e = {s.pos[0]-pos[0], 0, s.pos[2]-pos[2]};
+		// double mag_v = sqrt(v_e[0]*v_e[0]+v_e[1]*v_e[1]+v_e[2]*v_e[2]);
+		// v_e = {v_e[0]/mag_v, v_e[1]/mag_v, v_e[2]/mag_v};
+		// std::vector<double> u_e = {-v_e[2], v_e[1], v_e[0]};
+
+		// double mag_vp = sqrt(velocity[0]*velocity[0]+velocity[1]*velocity[1]+velocity[2]*velocity[2]);
+		// if(mag_vp != 0){
+		// 	double mag_vs = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
+
+		// 	double theta = acos(get_costheta_of_vectors(v_e, {1,0,0}));
+		// 	double ptheta = acos(get_costheta_of_vectors(velocity, {1,0,0}));
+		// 	double stheta = acos(get_costheta_of_vectors(s.velocity, {1,0,0}));
+
+
+		// 	double vpu = mag_vp * sin(ptheta-theta);
+		// 	double vsu = mag_vs * sin(stheta-theta);
+
+		// 	double vpv = mag_vp * cos(ptheta-theta);
+		// 	double vsv = mag_vs * cos(stheta-theta);
+
+		// 	double nvpv = ((mass-s.mass)*vpv + 2*s.mass*vsv)/(s.mass+mass);
+		// 	double nvsv = ((s.mass-mass)*vsv + 2*mass*vpv)/(s.mass+mass);
+
+		// 	velocity = {nvpv*v_e[0]+vpu*u_e[0], nvpv*v_e[1]+vpu*u_e[1], nvpv*v_e[2]+vpu*u_e[2]};
+		// 	s.velocity = {nvsv*v_e[0]+vsu*u_e[0], nvsv*v_e[1]+vsu*u_e[1], nvsv*v_e[2]+vsu*u_e[2]};
+		// 	std::cout << "theta\t" << theta << ", " << ptheta << ", " << stheta << std::endl;
+		// }else{
+		// 	double mag_vs = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
+
+		// 	double costheta = get_costheta_of_vectors(s.velocity, v_e);
+		// 	double sintheta = sqrt(1-costheta*costheta);
+
+		// 	velocity = {
+		// 		s.mass / mass * v_e[0] * costheta * mag_vs,
+		// 		s.mass / mass * v_e[1] * costheta * mag_vs,
+		// 		s.mass / mass * v_e[2] * costheta * mag_vs
+		// 	};
+
+		// 	double theta = acos(get_costheta_of_vectors(v_e, {1,0,0}));
+		// 	double stheta = acos(get_costheta_of_vectors(s.velocity, {1,0,0}));
+		// 	double vsu = mag_vs * sin(stheta-theta);
+
+		// 	s.velocity = {
+		// 		vsu*u_e[0]-velocity[0]*mass/s.mass, 
+		// 		vsu*u_e[1]-velocity[1]*mass/s.mass,
+		// 		-vsu*u_e[2]-velocity[2]*mass/s.mass
+		// 	};
+		// }
+		// std::cout<<"out\t"<< velocity[0] << ", " << velocity[1] << ", " << velocity[2] << ", " <<"\t" << s.velocity[0] << ", " << s.velocity[1] << ", " << s.velocity[2] << ", " << std::endl;
 	}
+	// if(isTouchedBowl(s)){
+	// 	std::vector<double> direction = {s.pos[0] - pos[0], 0, s.pos[2] - pos[2]};
+	// 	// normalization
+	// 	double mag_of_direction = sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
+	// 	direction[0] /= mag_of_direction;
+	// 	direction[2] /= mag_of_direction; 
+
+
+	// 	double costheta = get_costheta_of_vectors(s.velocity, direction);
+
+	// 	// std::cout << costheta <<std::endl;
+
+	// 	double mag_of_svelocity = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
+
+	// 	velocity[0] = s.mass / mass * direction[0] * costheta * mag_of_svelocity;
+	// 	velocity[1] = s.mass / mass * direction[1] * costheta * mag_of_svelocity;
+	// 	velocity[2] = s.mass / mass * direction[2] * costheta * mag_of_svelocity;
+
+	// 	//reaction  to bowl
+
+	// 	s.velocity[0] -= mass / s.mass * velocity[0];
+	// 	s.velocity[1] -= mass / s.mass * velocity[1];
+	// 	s.velocity[2] -= mass / s.mass * velocity[2];
+	// }
 }
 void Pin::reset(){
 	*this = *back_up;
