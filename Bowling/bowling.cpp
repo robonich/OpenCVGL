@@ -111,14 +111,10 @@ public:
 	void collisionReactionWith(Pin &s);
 };
 
-//gloval variable
-
-Sphere bowl(0.5, 0.5, {0.0,0.5,0.0}, true);
-
-#define FLOOR_L 36.4
-#define FLOOR_W 2.16
-
 //OpenCV global variable
+#define FLOOR_L 30
+#define FLOOR_W 3
+
 int CVmode = 0;
 cv::CascadeClassifier cascadeFace, cascadeUpbody;
 cv::Mat frame, preFrame;
@@ -129,7 +125,10 @@ double throwDirection[3];//ボールを投げるときの力。ただしy方向�
 double throwForce;
 double throwPosX;
 
-Floor floor1({FLOOR_W,-FLOOR_L}, {0,0,-FLOOR_L/2.0}, 0);
+//gloval variable
+
+Sphere bowl(0.5, 0.5, {0.0,0.5,0.0}, true);
+Floor floor1({FLOOR_W,FLOOR_L}, {0,0,-0.5*FLOOR_L}, 0);
 Pin pin1[] = { Pin({1,1.5,-25}, 0.3, 1.5, 0.3, true),
 Pin({0,1.5,-22}, 0.3, 1.5, 0.3, true),
 Pin({1,1.5,-19}, 0.3, 1.5, 0.3, true),
@@ -257,34 +256,34 @@ void glut_timer(int value){
 	if(iskeydown['s']) {bowl.addForce({0.0, 0.0, 1.0}, 1.0); /*downkeydown = false;*/}
 	if(iskeydown['a']) {bowl.addForce({-1.0, 0.0, 0.0}, 1.0); /*leftkeydown = false;*/}
 	if(iskeydown['d']) {bowl.addForce({1.0, 0.0, 0.0}, 1.0); /*rightkeydown = false;*/}
-	
-	// switch (CVmode){
-	// 	case 0:
-	// 	break;
-	// 	case 1:
-	// 	break;
-	// 	case 2:
-	// 	bowl.pos[0] = (double)throwPosX/640.0*FLOOR_W;
-	// 	case 3:
-	// 	if(bowl.pos[2] < -FLOOR_L/1.5){//摩擦がかかるところの区別
-	// 		bowl.addForce({1, 0, 0}, angularVelocity/80);
-	// 	}else{
-	// 		bowl.addForce({1, 0, 0}, angularVelocity/800);
-	// 	}
-	// 	static bool addZForce = true;
-	// 	if(addZForce) {//げき力として与えるから最初の一回のみ
-	// 		bowl.addForce({throwDirection[0], 0, throwDirection[2]}, throwForce);
-	// 		addZForce = false;
-	// 	}
-	// 	std::cout << CVmode << ", "
-	// 	<< angularVelocity << ", "
-	// 	<< throwPosX << ", "
-	// 	<< throwDirection[0] << ". "
-	// 	<< throwDirection[2] << ", "
-	// 	<< throwForce << std::endl;
-	// 	break;
-	// }
 	bowl.updatePos();
+
+	switch (CVmode){
+		case 0:
+		break;
+		case 1:
+		break;
+		case 2:
+		bowl.pos[0] = (double)throwPosX/640.0*FLOOR_W;
+		case 3:
+		if(bowl.pos[2] < -FLOOR_L/1.5){//摩擦がかかるところの区別
+			bowl.addForce({1, 0, 0}, angularVelocity/80);
+		}else{
+			bowl.addForce({1, 0, 0}, angularVelocity/800);
+		}
+		static bool addZForce = true;
+		if(addZForce) {//げき力として与えるから最初の一回のみ
+			bowl.addForce({throwDirection[0], 0, throwDirection[2]}, throwForce*100);
+			addZForce = false;
+		}
+		std::cout << CVmode << ", "
+		<< angularVelocity << ", "
+		<< throwPosX << ", "
+		<< throwDirection[0] << ". "
+		<< throwDirection[2] << ", "
+		<< throwForce << std::endl;
+		break;
+	}
 
 	for(auto &i : pin1){
 		i.collisionReactionWith(bowl);
@@ -594,7 +593,6 @@ void detect_face_slope(){
 	cv::imshow("input", frame);
 	return;
 }
-
 void face_and_body_detection(){
 	static auto start = std::chrono::system_clock::now();
 	static auto end = std::chrono::system_clock::now();
