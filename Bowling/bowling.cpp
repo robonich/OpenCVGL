@@ -25,6 +25,7 @@ void glut_keyboard(unsigned char key, int x, int y);
 void specialkeydown(int key, int x, int y);
 void glut_timer(int value);
 void glut_keyboardup(unsigned char key, int x, int y);
+static void drawString(void *font, std::string str, int w, int h, int x0, int y0);
 
 //openCV
 void openCV_main();
@@ -67,15 +68,18 @@ public:
 	void draw(DRAW_TYPE d);
 };
 
+
 class Floor//floor class
 {
 public:
 	std::vector<double> size;//size size is 2
 	std::vector<double> pos;//pos size is 3
+	std::vector<double> color;
 	double coe_fric; //摩擦係数0<=coe<=1
 
 	Floor();
 	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric);
+	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric, std::vector<double> color);
 
 	bool isTouchedSphere(Sphere &s);
 
@@ -111,11 +115,12 @@ public:
 	void collisionReactionWith(Pin &s);
 };
 
-//OpenCV global variable
-#define FLOOR_L 30
-#define FLOOR_W 3
 
-int CVmode = 0;
+//OpenCV global variable
+#define FLOOR_L 60
+#define FLOOR_W 6
+
+int CVmode = -1;
 cv::CascadeClassifier cascadeFace, cascadeUpbody;
 cv::Mat frame, preFrame;
 cv::VideoCapture cap;
@@ -126,19 +131,27 @@ double throwForce;
 double throwPosX;
 
 //gloval variable
+int gameButton = 0;
 
-Sphere bowl(0.5, 0.5, {0.0,0.5,0.0}, true);
+Sphere bowl(0.5, 5.8967, {0.0,0.5,0.0}, true);
 Floor floor1({FLOOR_W,FLOOR_L}, {0,0,-0.5*FLOOR_L}, 0);
-Pin pin1[] = { Pin({1,1.5,-25}, 0.3, 1.5, 0.3, true),
-Pin({0,1.5,-22}, 0.3, 1.5, 0.3, true),
-Pin({1,1.5,-19}, 0.3, 1.5, 0.3, true),
-Pin({0,1.5,-16}, 0.3, 1.5, 0.3, true),
-Pin({3,1.5,-25}, 0.3, 1.5, 0.3, true),
-Pin({-3,1.5,-25}, 0.3, 1.5, 0.3, true),
-Pin({-1,1.5,-25}, 0.3, 1.5, 0.3, true),
-Pin({-2,1.5,-22}, 0.3, 1.5, 0.3, true),
-Pin({2,1.5,-22}, 0.3, 1.5, 0.3, true),
-Pin({-1,1.5,-19}, 0.3, 1.5, 0.3, true)
+
+Floor garter1[] = { 
+	Floor({1, FLOOR_L}, {-(FLOOR_W*0.5+0.5),-0.5,-0.5*FLOOR_L}, 0, {0.5, 0.3, 0.2}),
+	Floor({1, FLOOR_L}, {(FLOOR_W*0.5+0.5),-0.5,-0.5*FLOOR_L}, 0, {0.5, 0.3, 0.2})
+};
+
+Pin pin1[] = {
+	Pin({1,1.5,-FLOOR_L+5}, 0.3, 1.5, 1.6, true),
+	Pin({0,1.5,-FLOOR_L+8}, 0.3, 1.5, 1.6, true),
+	Pin({1,1.5,-FLOOR_L+11}, 0.3, 1.5, 1.6, true),
+	Pin({0,1.5,-FLOOR_L+14}, 0.3, 1.5, 1.6, true),
+	Pin({3,1.5,-FLOOR_L+5}, 0.3, 1.5, 1.6, true),
+	Pin({-3,1.5,-FLOOR_L+5}, 0.3, 1.5, 1.6, true),
+	Pin({-1,1.5,-FLOOR_L+5}, 0.3, 1.5, 1.6, true),
+	Pin({-2,1.5,-FLOOR_L+8}, 0.3, 1.5, 1.6, true),
+	Pin({2,1.5,-FLOOR_L+8}, 0.3, 1.5, 1.6, true),
+	Pin({-1,1.5,-FLOOR_L+11}, 0.3, 1.5, 1.6, true)
 };
 
 bool upkeydown = false; //false: key up, true: key down
@@ -218,6 +231,15 @@ void glut_keyboard(unsigned char key, int x, int y){
 		bowl.reset();
 		for(auto &i : pin1) i.reset();
 			break;
+		case 13://enter key
+		if(CVmode == -1){
+			if(gameButton == 0) {
+				pthread_mutex_lock( &mCVmode);
+				CVmode = 0;
+				pthread_mutex_unlock( &mCVmode);
+			}
+			if(gameButton == 1) exit(0);
+		}
 	}
 	glutPostRedisplay();
 }
@@ -241,11 +263,21 @@ void specialkeydown(int key, int x, int y)
 
 	if( key == GLUT_KEY_LEFT )
 	{
+		if(gameButton == 0){
+			gameButton = 1;
+		} else {
+			gameButton--;
+		}
 		leftkeydown = true;
 	}
 
 	if( key == GLUT_KEY_RIGHT )
 	{
+		if(gameButton == 1){
+			gameButton = 0;
+		} else {
+			gameButton++;
+		}
 		rightkeydown = true;
 	}
 	glutPostRedisplay();
@@ -256,34 +288,40 @@ void glut_timer(int value){
 	if(iskeydown['s']) {bowl.addForce({0.0, 0.0, 1.0}, 1.0); /*downkeydown = false;*/}
 	if(iskeydown['a']) {bowl.addForce({-1.0, 0.0, 0.0}, 1.0); /*leftkeydown = false;*/}
 	if(iskeydown['d']) {bowl.addForce({1.0, 0.0, 0.0}, 1.0); /*rightkeydown = false;*/}
-	bowl.updatePos();
 
 	switch (CVmode){
+		case -1:
+		break;
 		case 0:
 		break;
 		case 1:
 		break;
 		case 2:
-		bowl.pos[0] = (double)throwPosX/640.0*FLOOR_W;
+		bowl.pos[0] = (double)throwPosX/640.0*FLOOR_W - FLOOR_W/2;
+		break;
 		case 3:
 		if(bowl.pos[2] < -FLOOR_L/1.5){//摩擦がかかるところの区別
 			bowl.addForce({1, 0, 0}, angularVelocity/80);
 		}else{
-			bowl.addForce({1, 0, 0}, angularVelocity/800);
+			bowl.addForce({1, 0, 0}, angularVelocity/8000);
 		}
+
 		static bool addZForce = true;
 		if(addZForce) {//げき力として与えるから最初の一回のみ
-			bowl.addForce({throwDirection[0], 0, throwDirection[2]}, throwForce*100);
+			bowl.addForce({throwDirection[0], 0, -2800}, throwForce);
 			addZForce = false;
+
+			std::cout << CVmode << ", "
+			<< angularVelocity << ", "
+			<< throwPosX << ", "
+			<< throwDirection[0] << ", "
+			<< throwDirection[2] << ", "
+			<< throwForce << std::endl;
 		}
-		std::cout << CVmode << ", "
-		<< angularVelocity << ", "
-		<< throwPosX << ", "
-		<< throwDirection[0] << ". "
-		<< throwDirection[2] << ", "
-		<< throwForce << std::endl;
 		break;
 	}
+	bowl.updatePos();
+
 
 	for(auto &i : pin1){
 		i.collisionReactionWith(bowl);
@@ -296,6 +334,32 @@ void glut_timer(int value){
 	glutTimerFunc(1.0/DT , glut_timer , 0);
 }
 
+static void drawString(void *font, std::string str, int w, int h, int x0, int y0)
+{
+	glDisable(GL_LIGHTING);
+    // 平行投影にする
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	gluOrtho2D(0, w, h, 0);
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+
+    // 画面上にテキスト描画
+	glRasterPos2f(x0, y0);
+	int size = (int)str.size();
+	for(int i = 0; i < size; ++i){
+		char ic = str[i];
+		glutBitmapCharacter(font, ic);
+	}
+
+	glPopMatrix();
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+}
+
 void glut_display(){
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
@@ -303,7 +367,7 @@ void glut_display(){
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(bowl.pos[0], bowl.pos[1]+10.0, bowl.pos[2]+20.0,
+	gluLookAt(bowl.pos[0], bowl.pos[1]+5.0, bowl.pos[2]+20.0,
 		bowl.pos[0], bowl.pos[1], bowl.pos[2],
 		0.0, 1.0, 0.0);
 
@@ -311,9 +375,41 @@ void glut_display(){
 	glEnable(GL_DEPTH_TEST);
 
 	bowl.draw(Sphere::WIRE);
+	for(auto &i: garter1){
+		i.draw();
+	}
 	floor1.draw();
 	for(auto &i : pin1){
 		i.draw();
+	}
+	switch(CVmode){
+		case -1:
+		glColor3d(0.0, 0.0, 1.0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"CV BOWL", WINDOW_X, WINDOW_Y, 200, 300);
+		glColor3d(0.0, 1.0, 0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"CV BOWL", WINDOW_X, WINDOW_Y, 205, 305);
+
+		if(gameButton == 0) {
+			glColor3d(1.0, 0.0, 0.0);
+			drawString(GLUT_BITMAP_HELVETICA_12, "START", WINDOW_X, WINDOW_Y, 150, 350);
+			glColor3d(1.0, 1.0, 1.0);
+			drawString(GLUT_BITMAP_HELVETICA_12, "END", WINDOW_X, WINDOW_Y, 325, 350);
+		} else if(gameButton == 1){
+			glColor3d(1.0, 1.0, 1.0);
+			drawString(GLUT_BITMAP_HELVETICA_12, "START", WINDOW_X, WINDOW_Y, 150, 350);
+			glColor3d(1.0, 0.0, 0.0);
+			drawString(GLUT_BITMAP_HELVETICA_12, "END", WINDOW_X, WINDOW_Y, 325, 350);
+		}
+		
+		break;
+		case 0:
+		break;
+		case 1:
+		break;
+		case 2:
+		break;
+		case 3:
+		break;
 	}
 
 	glFlush();
@@ -364,9 +460,11 @@ void Sphere::reset(){
 	*this = *back_up;
 }
 
-Floor::Floor() : Floor({0,0}, {0,0,0}, 0){}
+Floor::Floor() : Floor({0,0}, {0,0,0}, 0, {0,0,0}){}
 Floor::Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric) : 
-size(_size), pos(_pos), coe_fric(_coe_fric) {}
+Floor(_size, _pos, _coe_fric, {1.0,1.0,0}){}
+Floor::Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric, std::vector<double> _color) :
+size(_size), pos(_pos), coe_fric(_coe_fric), color(_color) {}
 
 bool Floor::isTouchedSphere(Sphere &s){//このようにsphereを渡すときは参照渡しにしないといけない。じゃないと呼ばれるたびにデストラクタが呼ばれてエラーが起きてしまう。
 	if(s.pos[0] > pos[0]+0.5*size[0] || s.pos[0] < pos[0]-0.5*size[0]) return false;
@@ -376,7 +474,7 @@ bool Floor::isTouchedSphere(Sphere &s){//このようにsphereを渡すときは
 }
 
 void Floor::draw(){
-	glColor3d(1.0, 1.0, 0.0);
+	glColor3d(color[0], color[1], color[2]);
 	glBegin(GL_POLYGON);
 	glVertex3d(pos[0]+0.5*size[0], pos[1], pos[2]+0.5*size[1]);
 	glVertex3d(pos[0]+0.5*size[0], pos[1], pos[2]-0.5*size[1]);
@@ -442,6 +540,12 @@ void Pin::collisionReactionWith(Sphere &s){
 		velocity[0] = s.mass / mass * direction[0] * costheta * mag_of_svelocity;
 		velocity[1] = s.mass / mass * direction[1] * costheta * mag_of_svelocity;
 		velocity[2] = s.mass / mass * direction[2] * costheta * mag_of_svelocity;
+
+		//reaction  to bowl
+
+		s.velocity[0] -= mass / s.mass * velocity[0];
+		s.velocity[1] -= mass / s.mass * velocity[1];
+		s.velocity[2] -= mass / s.mass * velocity[2];
 	}
 }
 void Pin::reset(){
@@ -489,6 +593,9 @@ void openCV_main(){
 		frame.copyTo(preFrame);
 
 		switch(CVmode){
+			case -1:
+			cv_idle();
+			break;
 			case 0://顔の左半面への移動検出
 			detect_face_slope();
 			break;
@@ -582,7 +689,7 @@ void detect_face_slope(){
 				printf("RETRY!!");
 			}else{
 				rotateFlag = false;
-				pthread_mutex_lock( &mCVmode);;
+				pthread_mutex_lock( &mCVmode);
 				CVmode = 1;
 				pthread_mutex_unlock( &mCVmode);
 
@@ -790,7 +897,7 @@ void detect_move(){//右反面だけ考えていれば良いから
 		}else {
 			throwDirection[0] = 0;
 			throwDirection[1] = 0;
-			throwDirection[2] = 0;
+			throwDirection[2] = upPos.y - bottomPos.y;
 			throwForce = 0;
 			bottomPos = cv::Point(0, b.y);
 			upPos = cv::Point(0, b.y);
