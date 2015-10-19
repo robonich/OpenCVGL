@@ -114,7 +114,22 @@ public:
 //gloval variable
 
 Sphere bowl(0.5, 0.5, {0.0,0.5,0.0}, true);
-Floor floor1({5,30}, {0,0,-15}, 0);
+
+#define FLOOR_L 36.4
+#define FLOOR_W 2.16
+
+//OpenCV global variable
+int CVmode = 0;
+cv::CascadeClassifier cascadeFace, cascadeUpbody;
+cv::Mat frame, preFrame;
+cv::VideoCapture cap;
+
+double angularVelocity;//首の回転から得られる角速度。これを球に反映させる
+double throwDirection[3];//ボールを投げるときの力。ただしy方向は常に0;
+double throwForce;
+double throwPosX;
+
+Floor floor1({FLOOR_W,-FLOOR_L}, {0,0,-FLOOR_L/2.0}, 0);
 Pin pin1[] = { Pin({1,1.5,-25}, 0.3, 1.5, 0.3, true),
 Pin({0,1.5,-22}, 0.3, 1.5, 0.3, true),
 Pin({1,1.5,-19}, 0.3, 1.5, 0.3, true),
@@ -242,6 +257,33 @@ void glut_timer(int value){
 	if(iskeydown['s']) {bowl.addForce({0.0, 0.0, 1.0}, 1.0); /*downkeydown = false;*/}
 	if(iskeydown['a']) {bowl.addForce({-1.0, 0.0, 0.0}, 1.0); /*leftkeydown = false;*/}
 	if(iskeydown['d']) {bowl.addForce({1.0, 0.0, 0.0}, 1.0); /*rightkeydown = false;*/}
+	
+	// switch (CVmode){
+	// 	case 0:
+	// 	break;
+	// 	case 1:
+	// 	break;
+	// 	case 2:
+	// 	bowl.pos[0] = (double)throwPosX/640.0*FLOOR_W;
+	// 	case 3:
+	// 	if(bowl.pos[2] < -FLOOR_L/1.5){//摩擦がかかるところの区別
+	// 		bowl.addForce({1, 0, 0}, angularVelocity/80);
+	// 	}else{
+	// 		bowl.addForce({1, 0, 0}, angularVelocity/800);
+	// 	}
+	// 	static bool addZForce = true;
+	// 	if(addZForce) {//げき力として与えるから最初の一回のみ
+	// 		bowl.addForce({throwDirection[0], 0, throwDirection[2]}, throwForce);
+	// 		addZForce = false;
+	// 	}
+	// 	std::cout << CVmode << ", "
+	// 	<< angularVelocity << ", "
+	// 	<< throwPosX << ", "
+	// 	<< throwDirection[0] << ". "
+	// 	<< throwDirection[2] << ", "
+	// 	<< throwForce << std::endl;
+	// 	break;
+	// }
 	bowl.updatePos();
 
 	for(auto &i : pin1){
@@ -422,17 +464,6 @@ double get_costheta_of_vectors(std::vector<double> a, std::vector<double> b){
 	return naiseki/magA/magB;
 }
 
-
-//OpenCV global variable
-int CVmode = 0;
-cv::CascadeClassifier cascadeFace, cascadeUpbody;
-cv::Mat frame, preFrame;
-cv::VideoCapture cap;
-
-double angularVelocity;//首の回転から得られる角速度。これを球に反映させる
-double throwDirection[3];//ボールを投げるときの力。ただしy方向は常に0;
-double throwForce;
-
 void openCV_main(){
 	std::string  cascadeUpBodyFile = "/usr/local/share/OpenCV/haarcascades/haarcascade_upperbody.xml";
 	std::string cascadeFaceFile = "/usr/local/share/OpenCV/haarcascades/haarcascade_frontalface_alt.xml";
@@ -565,6 +596,9 @@ void detect_face_slope(){
 }
 
 void face_and_body_detection(){
+	static auto start = std::chrono::system_clock::now();
+	static auto end = std::chrono::system_clock::now();
+
 	double scale = 4.0;
 	cv::Mat gray, smallImg(cv::saturate_cast<int>(frame.rows/scale), cv::saturate_cast<int>(frame.cols/scale), CV_8UC1);
 
@@ -575,30 +609,34 @@ void face_and_body_detection(){
 	std::vector<cv::Rect> faces, upBodys;
 	cascadeFace.detectMultiScale(smallImg, faces,
 		1.1,
-		2,
+		1,
 		CV_HAAR_SCALE_IMAGE);
 
 	static cv::Point faceCenter;
+	static cv::Point preFaceCenter(320,0);
 
 	for(int i = 0; i<(faces.size() != 0 ? 1 : 0); ++i){
 		int faceRadius, faceWidth, faceHeight;
 		faceCenter.x = cv::saturate_cast<int>((faces[i].x + faces[i].width*0.5)*scale);
 		faceCenter.y = cv::saturate_cast<int>((faces[i].y + faces[i].height*0.5)*scale);
-		faceRadius = cv::saturate_cast<int>((faces[i].width + faces[i].height)*0.25*scale);
-		faceWidth = cv::saturate_cast<int>(faces[i].width*0.5*scale);
-		faceHeight = cv::saturate_cast<int>(faces[i].height*0.5*scale);
 
-		cv::Rect roi_rect(faceCenter.x - faceWidth, faceCenter.y - faceHeight, faceWidth*2, faceHeight*2);
-		cv::Mat cutFace = frame(roi_rect);
-		cv::imshow("cutFace", cutFace);
+		// cv::Rect roi_rect(faceCenter.x - faceWidth, faceCenter.y - faceHeight, faceWidth*2, faceHeight*2);
+		// cv::Mat cutFace = frame(roi_rect);
+		// cv::imshow("cutFace", cutFace);
 	}
-	if(faceCenter.x < 160 && faceCenter.y > 0){
-		pthread_mutex_lock( &mCVmode);;
+	if(faces.size() == 0){
+		cv::line(frame, {preFaceCenter.x, 0}, {preFaceCenter.x, 480}, cv::Scalar(0,0,255), 5, 8, 0);	
+	} else {
+		cv::line(frame, {faceCenter.x, 0}, {faceCenter.x, 480}, cv::Scalar(255,0,0), 5, 8, 0);
+		preFaceCenter = faceCenter;
+	}
+
+	end = std::chrono::system_clock::now();
+	if(std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() > 3000){//三秒間の位置合わせ
+		pthread_mutex_lock( &mCVmode);
 		CVmode = 2; //move to next detection
 		pthread_mutex_unlock( &mCVmode);
-		cv::line(frame, {160, 0}, {160, 480}, cv::Scalar(255,0,0), 5, 8, 0);	
-	}  else {
-		cv::line(frame, {160, 0}, {160, 480}, cv::Scalar(0,0,255), 5, 8, 0);
+		throwPosX = preFaceCenter.x;
 	}
 	cv::imshow("input", frame);
 	return;
