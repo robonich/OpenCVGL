@@ -28,11 +28,14 @@ void glut_keyboardup(unsigned char key, int x, int y);
 static void drawString(void *font, std::string str, int w, int h, int x0, int y0);
 void set_texture();
 
+void resetCVMode();
+
 //openCV
 void openCV_main();
 void face_and_body_detection();
 void detect_move();
 void detect_face_slope();
+
 void cv_idle();
 
 //mutex
@@ -70,26 +73,13 @@ public:
 };
 
 
-class Floor//floor class
-{
-public:
-	std::vector<double> size;//size size is 2
-	std::vector<double> pos;//pos size is 3
-	std::vector<double> color;
-	double coe_fric; //摩擦係数0<=coe<=1
-
-	Floor();
-	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric);
-	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric, std::vector<double> color);
-
-	bool isTouchedSphere(Sphere &s);
-
-	void draw();
-};
 
 class Pin //pin class //接触判定は円柱で行う
 {
 public:
+	bool isRotated = false;
+	bool degreeflag = false;
+	double degree = 0;
 	std::vector<double> pos;
 	std::vector<double> velocity = {0,0,0};
 	double radius;
@@ -104,27 +94,51 @@ public:
 	Pin(std::vector<double> _pos, double _radius, double _height, double _mass, bool _hasChild);
 	~Pin(){ if(hasChild) delete back_up; gluDeleteQuadric(cylinder);};
 
+	void addForce(double x, double y, double z, double force);
+	void addForce(std::vector<double> axis, double force);
+
 	void updatePos();
 	void draw();
 	void reset();
+	void fadeout();
 
 	bool isBottonOnFloor();
-	bool isTouchedPin();
+	bool isTouchedPin(Pin &p);
 	bool isTouchedBowl(Sphere &s);
 
 	void collisionReactionWith(Sphere &s);
 	void collisionReactionWith(Pin &s);
 };
+class Floor//floor class
+{
+public:
+	std::vector<double> size;//size size is 2
+	std::vector<double> pos;//pos size is 3
+	std::vector<double> color;
+	double coe_fric; //摩擦係数0<=coe<=1
 
+	Floor();
+	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric);
+	Floor(std::vector<double> _size, std::vector<double> _pos, double _coe_fric, std::vector<double> color);
+
+	bool isTouchedSphere(Sphere &s);
+	bool isTouchedPinBottom(Pin &p);
+	bool isPinRotated(Pin &p);
+
+	void draw();
+};
 
 //OpenCV global variable
-#define FLOOR_L 60
-#define FLOOR_W 6
+#define FLOOR_L 70
+#define FLOOR_W 7
 
 int CVmode = -1;
 cv::CascadeClassifier cascadeFace, cascadeUpbody;
 cv::Mat frame, preFrame;
 cv::VideoCapture cap;
+
+bool retry = false;
+bool first = true;
 
 double angularVelocity;//首の回転から得られる角速度。これを球に反映させる
 double throwDirection[3];//ボールを投げるときの力。ただしy方向は常に0;
@@ -137,11 +151,20 @@ double throwPosX;
 std::vector<std::string> inputFileNames = {"lane.jpg"};
 GLuint g_TextureHandles[] = {0};
 
+bool first_throw = false;
+bool second_throw = false;
+bool spare = false;
+bool result = false;
+
+int point = 0;
+
 int gameButton = 0;
+
+int phase = 0;
 
 Sphere bowl(0.5, 5.8967, {0.0,0.5,0.0}, true);
 
-Floor floor1({FLOOR_W,FLOOR_L}, {0,0,-0.5*FLOOR_L}, 0);
+Floor floor1({FLOOR_W,FLOOR_L}, {0,0,-0.5*FLOOR_L}, 0.3);
 
 Floor garter1[] = { 
 	Floor({1, FLOOR_L}, {-(FLOOR_W*0.5+0.5),-0.5,-0.5*FLOOR_L}, 0, {0.5, 0.3, 0.2}),
@@ -256,6 +279,7 @@ void glut_keyboard(unsigned char key, int x, int y){
 				pthread_mutex_lock( &mCVmode);
 				CVmode = 0;
 				pthread_mutex_unlock( &mCVmode);
+				first_throw = true;
 			}
 			if(gameButton == 1) exit(0);
 		}
@@ -303,11 +327,100 @@ void specialkeydown(int key, int x, int y)
 }
 
 void glut_timer(int value){
+
+	static bool addZForce = true;
+
 	if(iskeydown['w']) {bowl.addForce({0.0, 0.0, -1.0}, 1.0); /*upkeydown = false;*/}
 	if(iskeydown['s']) {bowl.addForce({0.0, 0.0, 1.0}, 1.0); /*downkeydown = false;*/}
 	if(iskeydown['a']) {bowl.addForce({-1.0, 0.0, 0.0}, 1.0); /*leftkeydown = false;*/}
 	if(iskeydown['d']) {bowl.addForce({1.0, 0.0, 0.0}, 1.0); /*rightkeydown = false;*/}
 
+
+	if(phase == 0){
+		if(!floor1.isTouchedSphere(bowl)){
+			first_throw = false;
+			second_throw = true;
+			phase = 1;
+			CVmode = 0;
+			for(auto &p: pin1){
+				if(floor1.isPinRotated(p) || !floor1.isTouchedPinBottom(p)){
+					point++;
+					p.fadeout();
+				}
+			}
+			bowl.reset();
+			
+			addZForce = true;
+		}
+	} else if(phase == 1){
+		if(!floor1.isTouchedSphere(bowl)){
+			first_throw = false;
+			second_throw = true;
+			phase = 2;
+			CVmode = 0;
+			for(auto &p: pin1){
+				std::cout << p.pos[0] << "," << p.pos[1]<< "," << p.pos[2] << std::endl;
+				if (p.isRotated) continue;
+				if(floor1.isPinRotated(p) || !floor1.isTouchedPinBottom(p)){
+					point++;
+					p.fadeout();
+				}
+			}
+			bowl.reset();
+			if(point == 10){
+				spare = true;
+			}
+			addZForce = true;
+		}
+	} else if(phase == 2){
+		result = true;
+		second_throw = false;
+		static int count = 0;
+		count++;
+		if(count > 500) {
+			spare = false;
+			bowl.reset();
+			for(auto &p: pin1){
+				p.reset();
+			}
+			CVmode = -1;
+			phase = 1;
+			count = 0;
+			result = false;
+			point = 0;
+		}
+	}
+
+	// if(phase == 0){
+	// 	glColor3d(0.0, 0.0, 1.0);
+	// 	drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"FIRST THROW!!", WINDOW_X, WINDOW_Y, 10, 10);
+	// 	if(!floor1.isTouchedSphere(bowl)) {
+	// 		phase = 1;
+	// 		CVmode = 0
+	// 	}
+	// }
+	// if(phase == 1){
+	// 	if(!floor1.isTouchedSphere(bowl)) {
+
+	// 		resetCVMode();
+	// 		CVmode = 0;
+	// 		phase = 2;
+	// 	}
+	// 	if(point == 10){
+	// 		glColor3d(0.0, 0.0, 1.0);
+	// 		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"STRIKE!!", WINDOW_X, WINDOW_Y, 200, 300);
+	// 		glColor3d(0.0, 1.0, 0);
+	// 		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"STRIKE!!", WINDOW_X, WINDOW_Y, 205, 305);
+	// 	} else {
+	// 		glColor3d(0.0, 0.0, 1.0);
+	// 		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"SECOND THROW!!", WINDOW_X, WINDOW_Y, 10, 10);
+	// 	}
+	// }
+	// if(phase == 2){
+	// 	resetCVMode();
+	// }
+
+	
 	switch (CVmode){
 		case -1:
 		break;
@@ -325,9 +438,8 @@ void glut_timer(int value){
 			bowl.addForce({1, 0, 0}, angularVelocity/8000);
 		}
 
-		static bool addZForce = true;
 		if(addZForce) {//げき力として与えるから最初の一回のみ
-			bowl.addForce({throwDirection[0], 0, -2800}, throwForce);
+			bowl.addForce({throwDirection[0], 0, -2800}, (300 - throwForce)*3);
 			addZForce = false;
 
 			std::cout << CVmode << ", "
@@ -342,22 +454,39 @@ void glut_timer(int value){
 	bowl.updatePos();
 
 
-	for(auto &i : pin1){
-		i.collisionReactionWith(bowl);
-		i.updatePos();
-		// std::cout << pin1.isTouchedBowl(bowl) << "\n";
+	for(int i = 0;i < 10; i++){
+		for(int j = 0;j < 10; j++){
+			if(i == j) continue;
+			pin1[i].collisionReactionWith(pin1[j]);
+		}
+		pin1[i].collisionReactionWith(bowl);
+		pin1[i].addForce({-pin1[i].velocity[0], -pin1[i].velocity[1], -pin1[i].velocity[2]}, floor1.coe_fric*pin1[i].mass);//摩擦力
+		pin1[i].updatePos();
 	}
-	// std::cout << bowl.pos[0] << "\t" << bowl.pos[1] << "\t" << bowl.pos[2] << "\t" << floor1.pos[0] << "\t" << floor1.pos[1] << "\t" << floor1.pos[2] << "\t" << floor1.isTouchedSphere(bowl) <<"\n";
-	if(!floor1.isTouchedSphere(bowl)){
-		bowl.reset();
-		angularVelocity = 0;
-		throwDirection[0] = 0; throwDirection[1] = 0; throwDirection[2] = 0;
-		throwPosX = 0;
-		throwForce = 0;
-		CVmode = -1;
-	} 
+	// std::cout << "pin1[9]" << pin1[9].pos[0] << "," << pin1[9].pos[2] << std::endl;
+	// std::cout << "pin1[6]" << pin1[6].pos[0] << "," << pin1[6].pos[2] << std::endl;
+	// std::cout << "dist" << sqrt((pin1[9].pos[0]-pin[6].pos[0])*(pin1[9].pos[0]-pin[6].pos[0])+(pin1[9].pos[2]-pin[6].pos[2])+pi
+
+
 	glutPostRedisplay();
 	glutTimerFunc(1.0/DT , glut_timer , 0);
+}
+
+void resetCVMode(){
+	bowl.reset();
+	for(auto &i: pin1){
+		if(!floor1.isTouchedPinBottom(i) || floor1.isPinRotated(i)){
+			point++;
+			i.fadeout();
+		} else {
+			i.reset();
+		}
+	}
+	angularVelocity = 0;
+	throwDirection[0] = 0; throwDirection[1] = 0; throwDirection[2] = 0;
+	throwPosX = 0;
+	throwForce = 0;
+	CVmode = -1;
 }
 
 static void drawString(void *font, std::string str, int w, int h, int x0, int y0)
@@ -411,9 +540,9 @@ void glut_display(){
 	switch(CVmode){
 		case -1:
 		glColor3d(0.0, 0.0, 1.0);
-		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"CV BOWL", WINDOW_X, WINDOW_Y, 200, 300);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"TAKU BOWL", WINDOW_X, WINDOW_Y, 200, 300);
 		glColor3d(0.0, 1.0, 0);
-		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"CV BOWL", WINDOW_X, WINDOW_Y, 205, 305);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"TAKU BOWL", WINDOW_X, WINDOW_Y, 205, 305);
 
 		if(gameButton == 0) {
 			glColor3d(1.0, 0.0, 0.0);
@@ -436,6 +565,34 @@ void glut_display(){
 		break;
 		case 3:
 		break;
+	}
+
+
+	if(first_throw){
+		glColor3d(1.0, 0.0, 0.0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"FIRST THROW!!", WINDOW_X, WINDOW_Y, 40, 40);
+	}
+
+	if(second_throw){
+		glColor3d(1.0, 0.0, 0.0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"SECOND THROW!!", WINDOW_X, WINDOW_Y, 40, 40);
+	}
+
+	if(spare) {
+		glColor3d(1.0, 1.0, 0.0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"S P A R E!!", WINDOW_X, WINDOW_Y, 100, 80);	
+	}
+
+	if(result) {
+		glColor3d(1.0, 0.0, 0.0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 ,"R E S U L T :", WINDOW_X, WINDOW_Y, 40, 40);
+	}
+
+	if(CVmode != -1){
+		std::string str = std::to_string(point);
+		glColor3d(1.0, 0.0, 0.0);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 , "POINT = ", WINDOW_X, WINDOW_Y, 40, 100);
+		drawString(GLUT_BITMAP_TIMES_ROMAN_24 , str, WINDOW_X, WINDOW_Y, 150, 100);
 	}
 
 	glFlush();
@@ -518,6 +675,29 @@ bool Floor::isTouchedSphere(Sphere &s){//このようにsphereを渡すときは
 	else return false;
 }
 
+bool Floor::isTouchedPinBottom(Pin &p){//底面に接しているか
+	if(p.pos[0] > pos[0]+0.5*size[0] || p.pos[0] < pos[0]-0.5*size[0]) return false;
+	if(p.pos[2] > pos[2]+0.5*size[1] || p.pos[2] < pos[2]-0.5*size[1]) return false;
+	if(p.pos[1] - pos[1] == p.height) return true;
+	else return false;
+}
+
+bool Floor::isPinRotated(Pin &p){
+	if(p.degree >= 20) return true;
+	else return false;
+}
+
+void Pin::addForce(double x, double y, double z, double force){
+	if(velocity[0] == 0 && velocity[1] == 0 && velocity[2] == 0) return;
+	double mag = sqrt(x*x+y*y+z*z);
+	velocity[0] += force / mass * DT * x / mag;
+	velocity[1] += force / mass * DT * y / mag;
+	velocity[2] += force / mass * DT * z / mag;
+}//ある方向に力を加える
+void Pin::addForce(std::vector<double> axis, double force){
+	addForce(axis[0], axis[1], axis[2], force);
+}
+
 void Floor::draw(){
 	glColor3d(color[0], color[1], color[2]);
 	glBegin(GL_POLYGON);
@@ -552,18 +732,37 @@ void Pin::draw(){
 	glColor3d(1.0,0,1.0);
 	glTranslatef(pos[0], pos[1], pos[2]);
 	glRotatef(90,1,0,0);//degree, x, y, z
+	if(degreeflag){
+		glRotatef(degree+=5, -velocity[2], velocity[1], velocity[0]);//ぶつかった時の倒れる方向
+		pos[1] -= pos[1]*sin(degree/360.0*M_PI) - radius * sin(degree/360.0*M_PI);
+		// glTranslatef(0,pos[1]*sin(degree/360.0*M_PI),0);//高さの調整
+	}
+	if(degree >= 90) {
+		degreeflag = false;
+		glRotatef(degree, -velocity[2], velocity[1], velocity[0]);
+	}
 	gluQuadricDrawStyle(cylinder, GLU_FILL);
 	gluCylinder(cylinder, radius, radius, height, 30, 30);
 	glPopMatrix();
 }
 
-bool Pin::isBottonOnFloor(){}
-bool Pin::isTouchedPin(){
+void Pin::fadeout(){
+	isRotated = true;
+	pos = {-100,-20,-100};
+	velocity = {0,0,0};
+}
 
+bool Pin::isBottonOnFloor(){}
+bool Pin::isTouchedPin(Pin &p){
+	double dx = pos[0]-p.pos[0];
+	double dz = pos[2]-p.pos[2];
+	double dist = sqrt(dx*dx+dz*dz);
+	if(dist <= radius + p.radius) return true;
+	else return false;
 }
 bool Pin::isTouchedBowl(Sphere &s){
-	double dx = abs(pos[0]-s.pos[0]);
-	double dy = abs(pos[2]-s.pos[2]);
+	double dx = pos[0]-s.pos[0];
+	double dy = pos[2]-s.pos[2];
 	double dist = sqrt(dx*dx + dy*dy);
 	if(dist <= radius + s.radius) return true;
 	else return false;
@@ -576,13 +775,13 @@ void Pin::collisionReactionWith(Sphere &s){
 
 		std::vector<double> vp_vs = {//vp-vs
 			velocity[0]-s.velocity[0],
-			velocity[0]-s.velocity[0],
-			velocity[0]-s.velocity[0]
+			velocity[1]-s.velocity[1],
+			velocity[2]-s.velocity[2]
 		};
 
-		double naiseki = v_e[0]*vp_vs[0] + v_e[1]*vp_vs[1] + v_e[2]*vp_vs[2];
+		double Dot = v_e[0]*vp_vs[0] + v_e[1]*vp_vs[1] + v_e[2]*vp_vs[2];
 
-		std::vector<double> c = {naiseki*v_e[0], naiseki*v_e[1],naiseki*v_e[2]};
+		std::vector<double> c = {Dot*v_e[0], Dot*v_e[1], Dot*v_e[2]};
 
 		double Mp = -2*s.mass/(mass+s.mass);
 		double Ms = 2*mass/(mass+s.mass);
@@ -593,93 +792,56 @@ void Pin::collisionReactionWith(Sphere &s){
 			Mp*c[2]+velocity[2]
 		};
 
+		if(sqrt(velocity[0]*velocity[0]+velocity[1]*velocity[1]+velocity[2]*velocity[2]) > 3){
+			degreeflag = true;
+		}
+
 		s.velocity = {
 			Ms*c[0]+s.velocity[0],
 			Ms*c[1]+s.velocity[1],
 			Ms*c[2]+s.velocity[2]
 		};
-
-		// std::cout<<"in\t"<< velocity[0] << ", " << velocity[1] << ", " << velocity[2] << ", " <<"\t" << s.velocity[0] << ", " << s.velocity[1] << ", " << s.velocity[2] << ", " << std::endl;
-		// std::vector<double> v_e = {s.pos[0]-pos[0], 0, s.pos[2]-pos[2]};
-		// double mag_v = sqrt(v_e[0]*v_e[0]+v_e[1]*v_e[1]+v_e[2]*v_e[2]);
-		// v_e = {v_e[0]/mag_v, v_e[1]/mag_v, v_e[2]/mag_v};
-		// std::vector<double> u_e = {-v_e[2], v_e[1], v_e[0]};
-
-		// double mag_vp = sqrt(velocity[0]*velocity[0]+velocity[1]*velocity[1]+velocity[2]*velocity[2]);
-		// if(mag_vp != 0){
-		// 	double mag_vs = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
-
-		// 	double theta = acos(get_costheta_of_vectors(v_e, {1,0,0}));
-		// 	double ptheta = acos(get_costheta_of_vectors(velocity, {1,0,0}));
-		// 	double stheta = acos(get_costheta_of_vectors(s.velocity, {1,0,0}));
-
-
-		// 	double vpu = mag_vp * sin(ptheta-theta);
-		// 	double vsu = mag_vs * sin(stheta-theta);
-
-		// 	double vpv = mag_vp * cos(ptheta-theta);
-		// 	double vsv = mag_vs * cos(stheta-theta);
-
-		// 	double nvpv = ((mass-s.mass)*vpv + 2*s.mass*vsv)/(s.mass+mass);
-		// 	double nvsv = ((s.mass-mass)*vsv + 2*mass*vpv)/(s.mass+mass);
-
-		// 	velocity = {nvpv*v_e[0]+vpu*u_e[0], nvpv*v_e[1]+vpu*u_e[1], nvpv*v_e[2]+vpu*u_e[2]};
-		// 	s.velocity = {nvsv*v_e[0]+vsu*u_e[0], nvsv*v_e[1]+vsu*u_e[1], nvsv*v_e[2]+vsu*u_e[2]};
-		// 	std::cout << "theta\t" << theta << ", " << ptheta << ", " << stheta << std::endl;
-		// }else{
-		// 	double mag_vs = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
-
-		// 	double costheta = get_costheta_of_vectors(s.velocity, v_e);
-		// 	double sintheta = sqrt(1-costheta*costheta);
-
-		// 	velocity = {
-		// 		s.mass / mass * v_e[0] * costheta * mag_vs,
-		// 		s.mass / mass * v_e[1] * costheta * mag_vs,
-		// 		s.mass / mass * v_e[2] * costheta * mag_vs
-		// 	};
-
-		// 	double theta = acos(get_costheta_of_vectors(v_e, {1,0,0}));
-		// 	double stheta = acos(get_costheta_of_vectors(s.velocity, {1,0,0}));
-		// 	double vsu = mag_vs * sin(stheta-theta);
-
-		// 	s.velocity = {
-		// 		vsu*u_e[0]-velocity[0]*mass/s.mass, 
-		// 		vsu*u_e[1]-velocity[1]*mass/s.mass,
-		// 		-vsu*u_e[2]-velocity[2]*mass/s.mass
-		// 	};
-		// }
-		// std::cout<<"out\t"<< velocity[0] << ", " << velocity[1] << ", " << velocity[2] << ", " <<"\t" << s.velocity[0] << ", " << s.velocity[1] << ", " << s.velocity[2] << ", " << std::endl;
 	}
-	// if(isTouchedBowl(s)){
-	// 	std::vector<double> direction = {s.pos[0] - pos[0], 0, s.pos[2] - pos[2]};
-	// 	// normalization
-	// 	double mag_of_direction = sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
-	// 	direction[0] /= mag_of_direction;
-	// 	direction[2] /= mag_of_direction; 
-
-
-	// 	double costheta = get_costheta_of_vectors(s.velocity, direction);
-
-	// 	// std::cout << costheta <<std::endl;
-
-	// 	double mag_of_svelocity = sqrt(s.velocity[0]*s.velocity[0]+s.velocity[1]*s.velocity[1]+s.velocity[2]*s.velocity[2]);
-
-	// 	velocity[0] = s.mass / mass * direction[0] * costheta * mag_of_svelocity;
-	// 	velocity[1] = s.mass / mass * direction[1] * costheta * mag_of_svelocity;
-	// 	velocity[2] = s.mass / mass * direction[2] * costheta * mag_of_svelocity;
-
-	// 	//reaction  to bowl
-
-	// 	s.velocity[0] -= mass / s.mass * velocity[0];
-	// 	s.velocity[1] -= mass / s.mass * velocity[1];
-	// 	s.velocity[2] -= mass / s.mass * velocity[2];
-	// }
 }
 void Pin::reset(){
 	*this = *back_up;
 }
 
 void Pin::collisionReactionWith(Pin &s){
+	if(isTouchedPin(s)){
+		std::vector<double> v_e = {s.pos[0]-pos[0], 0, s.pos[2]-pos[2]};//衝突軸ベクトル
+		double mag_v = sqrt(v_e[0]*v_e[0]+v_e[1]*v_e[1]+v_e[2]*v_e[2]);
+		v_e = {v_e[0]/mag_v, v_e[1]/mag_v, v_e[2]/mag_v};
+
+		std::vector<double> vp_vs = {//vp-vs
+			velocity[0]-s.velocity[0],
+			velocity[1]-s.velocity[1],
+			velocity[2]-s.velocity[2]
+		};
+
+		double Dot = v_e[0]*vp_vs[0] + v_e[1]*vp_vs[1] + v_e[2]*vp_vs[2];
+
+		std::vector<double> c = {Dot*v_e[0], Dot*v_e[1], Dot*v_e[2]};
+
+		double Mp = -2*s.mass/(mass+s.mass);
+		double Ms = 2*mass/(mass+s.mass);
+
+		velocity = {
+			Mp*c[0]+velocity[0],
+			Mp*c[1]+velocity[1],
+			Mp*c[2]+velocity[2]
+		};
+
+		if(sqrt(velocity[0]*velocity[0]+velocity[1]*velocity[1]+velocity[2]*velocity[2]) > 2){
+			degreeflag = true;
+		}
+
+		s.velocity = {
+			Ms*c[0]+s.velocity[0],
+			Ms*c[1]+s.velocity[1],
+			Ms*c[2]+s.velocity[2]
+		};
+	}
 }
 
 double get_costheta_of_vectors(std::vector<double> a, std::vector<double> b){
@@ -750,6 +912,7 @@ void cv_idle(){//また投げる時まではただ映像を流し続ける
 
 void detect_face_slope(){
 	static bool detectSlopeFlag = false;
+
 	double scale = 2.0;
 	cv::Mat gray, smallImg(cv::saturate_cast<int>(frame.rows/scale), cv::saturate_cast<int>(frame.cols/scale), CV_8UC1);
 	static auto start = std::chrono::system_clock::now();
@@ -787,6 +950,7 @@ void detect_face_slope(){
 		// << " msec."
 		// << std::endl;
 		static bool rotateFlag = true;
+
 		if(std::chrono::duration_cast<std::chrono::milliseconds>(diff).count()>2000 && rotateFlag){
 			cv::Mat whiteFlash;
 			whiteFlash.create(frame.size(),  CV_8UC1);
@@ -818,6 +982,8 @@ void detect_face_slope(){
 				rotateFlag = false;
 				pthread_mutex_lock( &mCVmode);
 				CVmode = 1;
+				detectSlopeFlag = false;
+				rotateFlag = true;
 				pthread_mutex_unlock( &mCVmode);
 
 				angularVelocity = avg_theta;
@@ -868,6 +1034,7 @@ void face_and_body_detection(){
 		pthread_mutex_lock( &mCVmode);
 		CVmode = 2; //move to next detection
 		pthread_mutex_unlock( &mCVmode);
+		start = std::chrono::system_clock::now();
 		throwPosX = preFaceCenter.x;
 	}
 	cv::imshow("input", frame);
@@ -1018,6 +1185,8 @@ void detect_move(){//右反面だけ考えていれば良いから
 				pthread_mutex_lock( &mCVmode);;
 				CVmode = 3;
 				pthread_mutex_unlock( &mCVmode);
+				detectMotionMode = 0;
+				init = false;
 			} else{
 				detectMotionMode = 1;//ここでループさせるようにする
 			}
